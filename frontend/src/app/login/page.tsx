@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/auth-provider";
 import { ApiClientError } from "@/lib/api";
@@ -13,9 +13,11 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  if (!loading && user) {
-    router.replace("/dashboard");
-  }
+  useEffect(() => {
+    if (!loading && user) {
+      router.replace("/dashboard");
+    }
+  }, [loading, user, router]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -31,6 +33,14 @@ export default function LoginPage() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (loading || user) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-100 text-slate-600">
+        {user ? "Redirecting…" : "Loading…"}
+      </div>
+    );
   }
 
   return (
