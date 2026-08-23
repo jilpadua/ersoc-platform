@@ -83,6 +83,8 @@ public static class DependencyInjection
         else
             await db.Database.EnsureCreatedAsync();
 
+        await EnsurePermissionsSyncedAsync(db, logger);
+
         if (await db.Organizations.AnyAsync())
             return;
 
@@ -99,11 +101,6 @@ public static class DependencyInjection
             Address = "Local"
         };
         db.Branches.Add(branch);
-
-        foreach (var code in Permissions.All)
-        {
-            db.AppPermissions.Add(new AppPermission { Code = code, Name = code });
-        }
         await db.SaveChangesAsync();
 
         var permissions = await db.AppPermissions.ToListAsync();
@@ -116,7 +113,9 @@ public static class DependencyInjection
                 Permissions.DevicesRead, Permissions.DevicesWrite,
                 Permissions.ServicesRead, Permissions.ServicesWrite,
                 Permissions.RepairsRead, Permissions.RepairsWrite, Permissions.RepairsStatus,
-                Permissions.DashboardRead, Permissions.AuditRead
+                Permissions.DashboardRead, Permissions.AuditRead,
+                Permissions.InventoryRead, Permissions.InventoryWrite,
+                Permissions.PurchasingRead, Permissions.PurchasingWrite
             ],
             [RoleCodes.Cashier] =
             [
@@ -131,7 +130,9 @@ public static class DependencyInjection
             ],
             [RoleCodes.InventoryStaff] =
             [
-                Permissions.CustomersRead, Permissions.DevicesRead, Permissions.ServicesRead, Permissions.DashboardRead
+                Permissions.CustomersRead, Permissions.DevicesRead, Permissions.ServicesRead, Permissions.DashboardRead,
+                Permissions.InventoryRead, Permissions.InventoryWrite,
+                Permissions.PurchasingRead, Permissions.PurchasingWrite
             ]
         };
 
@@ -191,6 +192,50 @@ public static class DependencyInjection
         await db.SaveChangesAsync();
 
         logger.LogInformation("Seed complete. Owner login: {Email}", email);
+    }
+
+    private static async Task EnsurePermissionsSyncedAsync(ErsmsDbContext db, ILogger logger)
+    {
+        var existing = await db.AppPermissions.Select(p => p.Code).ToListAsync();
+        var missing = Permissions.All.Except(existing).ToList();
+        if (missing.Count > 0)
+        {
+            foreach (var code in missing)
+                db.AppPermissions.Add(new AppPermission { Code = code, Name = code });
+            await db.SaveChangesAsync();
+            logger.LogInformation("Added {Count} new permissions.", missing.Count);
+        }
+
+        var permissions = await db.AppPermissions.ToListAsync();
+        var byCode = permissions.ToDictionary(p => p.Code);
+
+        async Task EnsureRolePerms(string roleCode, IEnumerable<string> codes)
+        {
+            var roles = await db.AppRoles.Where(r => r.Code == roleCode).ToListAsync();
+            foreach (var role in roles)
+            {
+                var have = await db.RolePermissions.Where(rp => rp.RoleId == role.Id).Select(rp => rp.PermissionId).ToListAsync();
+                foreach (var code in codes)
+                {
+                    if (!byCode.TryGetValue(code, out var perm)) continue;
+                    if (have.Contains(perm.Id)) continue;
+                    db.RolePermissions.Add(new RolePermission { RoleId = role.Id, PermissionId = perm.Id });
+                }
+            }
+        }
+
+        await EnsureRolePerms(RoleCodes.Owner, Permissions.All);
+        await EnsureRolePerms(RoleCodes.AdminManager,
+        [
+            Permissions.InventoryRead, Permissions.InventoryWrite,
+            Permissions.PurchasingRead, Permissions.PurchasingWrite
+        ]);
+        await EnsureRolePerms(RoleCodes.InventoryStaff,
+        [
+            Permissions.InventoryRead, Permissions.InventoryWrite,
+            Permissions.PurchasingRead, Permissions.PurchasingWrite
+        ]);
+        await db.SaveChangesAsync();
     }
 
     public static async Task<IList<Claim>> BuildUserClaimsAsync(this ErsmsDbContext db, ApplicationUser user)

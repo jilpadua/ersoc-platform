@@ -12,6 +12,9 @@ const nav = [
   { href: "/devices", label: "Devices" },
   { href: "/repairs", label: "Repairs" },
   { href: "/services", label: "Services" },
+  { href: "/parts", label: "Parts" },
+  { href: "/suppliers", label: "Suppliers" },
+  { href: "/purchase-orders", label: "Purchase orders" },
   { href: "/audit", label: "Audit" },
   { href: "/settings", label: "Settings" },
 ];

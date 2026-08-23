@@ -9,10 +9,10 @@ type Dashboard = {
   pendingRepairs: number;
   overdueRepairs: number;
   completedToday: number;
+  lowStockParts: number;
   technicianWorkload: { technicianUserId?: string | null; openRepairs: number }[];
   unavailable: {
     sales: string;
-    lowStock: string;
     expenses: string;
     cashBalance: string;
     unpaidInvoices: string;
@@ -69,8 +69,8 @@ export default function DashboardPage() {
             <Metric label="Completed today" value={String(data.completedToday)} />
           </div>
           <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <Metric label="Low stock parts" value={String(data.lowStockParts)} hint="On hand below reorder level" />
             <Metric label="Sales" value="—" hint={data.unavailable.sales} />
-            <Metric label="Low stock" value="—" hint={data.unavailable.lowStock} />
             <Metric label="Unpaid invoices" value="—" hint={data.unavailable.unpaidInvoices} />
             <Metric label="Expenses" value="—" hint={data.unavailable.expenses} />
             <Metric label="Cash balance" value="—" hint={data.unavailable.cashBalance} />

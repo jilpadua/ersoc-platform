@@ -5,6 +5,8 @@ using Ersms.Domain.Repairs;
 using Ersms.Domain.ServiceCatalog;
 using Ersms.Domain.Identity;
 using Ersms.Domain.Audit;
+using Ersms.Domain.Inventory;
+using Ersms.Domain.Purchasing;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -42,6 +44,11 @@ public class ErsmsDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Gu
     public DbSet<RepairNote> RepairNotes => Set<RepairNote>();
     public DbSet<RepairPhoto> RepairPhotos => Set<RepairPhoto>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    public DbSet<Part> Parts => Set<Part>();
+    public DbSet<StockLedgerEntry> StockLedgerEntries => Set<StockLedgerEntry>();
+    public DbSet<Supplier> Suppliers => Set<Supplier>();
+    public DbSet<PurchaseOrder> PurchaseOrders => Set<PurchaseOrder>();
+    public DbSet<PurchaseOrderLine> PurchaseOrderLines => Set<PurchaseOrderLine>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -186,6 +193,54 @@ public class ErsmsDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Gu
             e.Property(x => x.Action).HasMaxLength(64).IsRequired();
             e.Property(x => x.EntityType).HasMaxLength(128).IsRequired();
             e.Property(x => x.EntityId).HasMaxLength(64).IsRequired();
+        });
+
+        builder.Entity<Part>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.OrganizationId, x.Sku }).IsUnique();
+            e.Property(x => x.Sku).HasMaxLength(64).IsRequired();
+            e.Property(x => x.Name).HasMaxLength(200).IsRequired();
+            e.Property(x => x.UnitCost).HasPrecision(18, 2);
+            e.Property(x => x.ReorderLevel).HasPrecision(18, 2);
+        });
+
+        builder.Entity<StockLedgerEntry>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.OrganizationId, x.BranchId, x.PartId });
+            e.Property(x => x.QuantityDelta).HasPrecision(18, 2);
+            e.Property(x => x.EntryType).HasMaxLength(32).IsRequired();
+            e.Property(x => x.ReferenceType).HasMaxLength(64);
+            e.Property(x => x.Reason).HasMaxLength(500);
+            e.HasOne(x => x.Part).WithMany().HasForeignKey(x => x.PartId);
+        });
+
+        builder.Entity<Supplier>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.OrganizationId, x.Name });
+            e.Property(x => x.Name).HasMaxLength(200).IsRequired();
+            e.Property(x => x.Email).HasMaxLength(256);
+            e.Property(x => x.Phone).HasMaxLength(50);
+        });
+
+        builder.Entity<PurchaseOrder>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.OrganizationId, x.PoNumber }).IsUnique();
+            e.Property(x => x.PoNumber).HasMaxLength(32).IsRequired();
+            e.Property(x => x.Status).HasMaxLength(32).IsRequired();
+            e.HasOne(x => x.Supplier).WithMany().HasForeignKey(x => x.SupplierId);
+        });
+
+        builder.Entity<PurchaseOrderLine>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.QuantityOrdered).HasPrecision(18, 2);
+            e.Property(x => x.QuantityReceived).HasPrecision(18, 2);
+            e.Property(x => x.UnitCost).HasPrecision(18, 2);
+            e.HasOne(x => x.PurchaseOrder).WithMany(x => x.Lines).HasForeignKey(x => x.PurchaseOrderId);
         });
 
         builder.Entity<ApplicationUser>(e =>

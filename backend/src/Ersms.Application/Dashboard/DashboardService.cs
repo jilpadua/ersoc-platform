@@ -9,11 +9,12 @@ public sealed record DashboardDto(
     int PendingRepairs,
     int OverdueRepairs,
     int CompletedToday,
+    int LowStockParts,
     IReadOnlyList<TechnicianWorkloadDto> TechnicianWorkload,
     DashboardUnavailableDto Unavailable);
 
 public sealed record TechnicianWorkloadDto(Guid? TechnicianUserId, int OpenRepairs);
-public sealed record DashboardUnavailableDto(string Sales, string LowStock, string Expenses, string CashBalance, string UnpaidInvoices);
+public sealed record DashboardUnavailableDto(string Sales, string Expenses, string CashBalance, string UnpaidInvoices);
 
 public interface IDashboardService
 {
@@ -74,15 +75,32 @@ public sealed class DashboardService : IDashboardService
             .Select(x => new TechnicianWorkloadDto(x.TechnicianUserId, x.OpenRepairs))
             .ToList();
 
+        var lowStock = 0;
+        var branchId = _user.BranchId;
+        if (branchId.HasValue)
+        {
+            var parts = await _db.Parts.AsNoTracking()
+                .Where(p => p.OrganizationId == orgId && p.IsActive)
+                .Select(p => new { p.Id, p.ReorderLevel })
+                .ToListAsync(ct);
+            var onHand = await _db.StockLedgerEntries.AsNoTracking()
+                .Where(e => e.OrganizationId == orgId && e.BranchId == branchId.Value)
+                .GroupBy(e => e.PartId)
+                .Select(g => new { PartId = g.Key, Qty = g.Sum(x => x.QuantityDelta) })
+                .ToDictionaryAsync(x => x.PartId, x => x.Qty, ct);
+
+            lowStock = parts.Count(p => onHand.GetValueOrDefault(p.Id) < p.ReorderLevel);
+        }
+
         return Result<DashboardDto>.Success(new DashboardDto(
             todayRevenue,
             pending,
             overdue,
             completedToday,
+            lowStock,
             workload,
             new DashboardUnavailableDto(
                 "Available in Phase 3",
-                "Available in Phase 2",
                 "Available in Phase 4",
                 "Available in Phase 4",
                 "Available in Phase 3")));

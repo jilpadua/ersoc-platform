@@ -104,6 +104,10 @@ public static class Permissions
     public const string DashboardRead = "dashboard.read";
     public const string SettingsManage = "settings.manage";
     public const string UsersManage = "users.manage";
+    public const string InventoryRead = "inventory.read";
+    public const string InventoryWrite = "inventory.write";
+    public const string PurchasingRead = "purchasing.read";
+    public const string PurchasingWrite = "purchasing.write";
 
     public static IReadOnlyList<string> All { get; } =
     [
@@ -111,7 +115,8 @@ public static class Permissions
         DevicesRead, DevicesWrite,
         ServicesRead, ServicesWrite,
         RepairsRead, RepairsWrite, RepairsStatus,
-        AuditRead, DashboardRead, SettingsManage, UsersManage
+        AuditRead, DashboardRead, SettingsManage, UsersManage,
+        InventoryRead, InventoryWrite, PurchasingRead, PurchasingWrite
     ];
 }
 
