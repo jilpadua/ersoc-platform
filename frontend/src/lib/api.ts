@@ -33,7 +33,18 @@ export async function api<T>(
   if (res.status === 204) return undefined as T;
 
   const text = await res.text();
-  const data = text ? JSON.parse(text) : null;
+  let data: unknown = null;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      throw new ApiClientError(
+        "invalid_response",
+        text.slice(0, 300) || res.statusText,
+        res.status
+      );
+    }
+  }
 
   if (!res.ok) {
     const err = data as ApiError | null;

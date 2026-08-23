@@ -37,7 +37,8 @@ public sealed class DashboardService : IDashboardService
         if (!auth.IsSuccess) return Result<DashboardDto>.Failure(auth.ErrorCode!, auth.ErrorMessage!);
 
         var orgId = _user.OrganizationId!.Value;
-        var todayStart = DateTimeOffset.UtcNow.Date;
+        var now = DateTimeOffset.UtcNow;
+        var todayStart = new DateTimeOffset(now.Year, now.Month, now.Day, 0, 0, 0, TimeSpan.Zero);
         var todayEnd = todayStart.AddDays(1);
 
         var completedStatusIds = await _db.RepairStatusDefinitions.AsNoTracking()
@@ -62,12 +63,16 @@ public sealed class DashboardService : IDashboardService
         var completedToday = await repairs.CountAsync(r =>
             r.CompletedAt >= todayStart && r.CompletedAt < todayEnd && completedStatusIds.Contains(r.StatusId), ct);
 
-        var workload = await repairs
+        var workloadRows = await repairs
             .Where(r => pendingStatusIds.Contains(r.StatusId))
             .GroupBy(r => r.TechnicianUserId)
-            .Select(g => new TechnicianWorkloadDto(g.Key, g.Count()))
+            .Select(g => new { TechnicianUserId = g.Key, OpenRepairs = g.Count() })
             .OrderByDescending(x => x.OpenRepairs)
             .ToListAsync(ct);
+
+        var workload = workloadRows
+            .Select(x => new TechnicianWorkloadDto(x.TechnicianUserId, x.OpenRepairs))
+            .ToList();
 
         return Result<DashboardDto>.Success(new DashboardDto(
             todayRevenue,
