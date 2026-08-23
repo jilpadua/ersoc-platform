@@ -17,6 +17,7 @@ public sealed record CustomerDto(
     string? Province,
     string? PostalCode,
     string? Notes,
+    bool IsActive,
     DateTimeOffset CreatedAt);
 
 public sealed record CreateCustomerRequest(
@@ -28,7 +29,8 @@ public sealed record CreateCustomerRequest(
     string? City,
     string? Province,
     string? PostalCode,
-    string? Notes);
+    string? Notes,
+    bool? IsActive = null);
 
 public sealed class CreateCustomerValidator : AbstractValidator<CreateCustomerRequest>
 {
@@ -42,10 +44,11 @@ public sealed class CreateCustomerValidator : AbstractValidator<CreateCustomerRe
 
 public interface ICustomerService
 {
-    Task<Result<PagedResult<CustomerDto>>> ListAsync(PagedQuery query, CancellationToken ct = default);
+    Task<Result<PagedResult<CustomerDto>>> ListAsync(PagedQuery query, bool includeInactive = false, CancellationToken ct = default);
     Task<Result<CustomerDto>> GetAsync(Guid id, CancellationToken ct = default);
     Task<Result<CustomerDto>> CreateAsync(CreateCustomerRequest request, CancellationToken ct = default);
     Task<Result<CustomerDto>> UpdateAsync(Guid id, CreateCustomerRequest request, CancellationToken ct = default);
+    Task<Result<CustomerDto>> SetActiveAsync(Guid id, bool isActive, CancellationToken ct = default);
 }
 
 public sealed class CustomerService : ICustomerService
@@ -67,13 +70,15 @@ public sealed class CustomerService : ICustomerService
         _validator = validator;
     }
 
-    public async Task<Result<PagedResult<CustomerDto>>> ListAsync(PagedQuery query, CancellationToken ct = default)
+    public async Task<Result<PagedResult<CustomerDto>>> ListAsync(PagedQuery query, bool includeInactive = false, CancellationToken ct = default)
     {
         var auth = AuthorizationGuard.Require(_user, Permissions.CustomersRead);
         if (!auth.IsSuccess) return Result<PagedResult<CustomerDto>>.Failure(auth.ErrorCode!, auth.ErrorMessage!);
 
         var orgId = _user.OrganizationId!.Value;
         var q = _db.Customers.AsNoTracking().Where(c => c.OrganizationId == orgId);
+        if (!includeInactive)
+            q = q.Where(c => c.IsActive);
 
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
@@ -133,7 +138,8 @@ public sealed class CustomerService : ICustomerService
             City = request.City,
             Province = request.Province,
             PostalCode = request.PostalCode,
-            Notes = request.Notes
+            Notes = request.Notes,
+            IsActive = request.IsActive ?? true
         };
         _db.Customers.Add(entity);
         await _db.SaveChangesAsync(ct);
@@ -163,15 +169,33 @@ public sealed class CustomerService : ICustomerService
         entity.Province = request.Province;
         entity.PostalCode = request.PostalCode;
         entity.Notes = request.Notes;
+        if (request.IsActive.HasValue)
+            entity.IsActive = request.IsActive.Value;
         entity.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
         await _audit.WriteAsync("update", "Customer", entity.Id.ToString(), before, ToDto(entity), ct);
         return Result<CustomerDto>.Success(ToDto(entity));
     }
 
+    public async Task<Result<CustomerDto>> SetActiveAsync(Guid id, bool isActive, CancellationToken ct = default)
+    {
+        var auth = AuthorizationGuard.Require(_user, Permissions.CustomersWrite);
+        if (!auth.IsSuccess) return Result<CustomerDto>.Failure(auth.ErrorCode!, auth.ErrorMessage!);
+
+        var entity = await _db.Customers.FirstOrDefaultAsync(c => c.Id == id && c.OrganizationId == _user.OrganizationId, ct);
+        if (entity is null) return Result<CustomerDto>.Failure(ErrorCodes.NotFound, "Customer not found.");
+
+        var before = ToDto(entity);
+        entity.IsActive = isActive;
+        entity.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        await _audit.WriteAsync(isActive ? "activate" : "deactivate", "Customer", entity.Id.ToString(), before, ToDto(entity), ct);
+        return Result<CustomerDto>.Success(ToDto(entity));
+    }
+
     private static System.Linq.Expressions.Expression<Func<Customer, CustomerDto>> Map =>
-        c => new CustomerDto(c.Id, c.Name, c.Email, c.Phone, c.AddressLine1, c.AddressLine2, c.City, c.Province, c.PostalCode, c.Notes, c.CreatedAt);
+        c => new CustomerDto(c.Id, c.Name, c.Email, c.Phone, c.AddressLine1, c.AddressLine2, c.City, c.Province, c.PostalCode, c.Notes, c.IsActive, c.CreatedAt);
 
     private static CustomerDto ToDto(Customer c) =>
-        new(c.Id, c.Name, c.Email, c.Phone, c.AddressLine1, c.AddressLine2, c.City, c.Province, c.PostalCode, c.Notes, c.CreatedAt);
+        new(c.Id, c.Name, c.Email, c.Phone, c.AddressLine1, c.AddressLine2, c.City, c.Province, c.PostalCode, c.Notes, c.IsActive, c.CreatedAt);
 }

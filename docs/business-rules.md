@@ -12,6 +12,10 @@ Default codes: `RECEIVED`, `DIAGNOSIS`, `WAITING_FOR_APPROVAL`, `APPROVED`, `WAI
 
 Transitions are validated by `RepairWorkflow` in the domain. Each transition writes `RepairStatusHistory` (actor, timestamps, previous/new, reason) and an audit event.
 
+## Soft deactivate
+
+Customers, devices, and services use `IsActive` for soft deactivate. Default list queries return active records only (`includeInactive=true` to include inactive). Hard deletes of catalog rows linked to repairs are not used in Phase 1.
+
 ## Authorization
 
 Permission codes (e.g. `repairs.status`) are checked in application services. Controllers require authentication; missing permissions return `forbidden`.

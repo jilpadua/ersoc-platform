@@ -14,4 +14,5 @@ public class Customer : AuditableEntity
     public string? Province { get; set; }
     public string? PostalCode { get; set; }
     public string? Notes { get; set; }
+    public bool IsActive { get; set; } = true;
 }
