@@ -18,6 +18,7 @@ public sealed record DeviceDto(
     string? Condition,
     string? Accessories,
     string? IdentifyingDetails,
+    bool IsActive,
     DateTimeOffset CreatedAt);
 
 public sealed record CreateDeviceRequest(
@@ -30,7 +31,8 @@ public sealed record CreateDeviceRequest(
     string? Color,
     string? Condition,
     string? Accessories,
-    string? IdentifyingDetails);
+    string? IdentifyingDetails,
+    bool? IsActive = null);
 
 public sealed class CreateDeviceValidator : AbstractValidator<CreateDeviceRequest>
 {
@@ -45,10 +47,11 @@ public sealed class CreateDeviceValidator : AbstractValidator<CreateDeviceReques
 
 public interface IDeviceService
 {
-    Task<Result<PagedResult<DeviceDto>>> ListAsync(PagedQuery query, Guid? customerId, CancellationToken ct = default);
+    Task<Result<PagedResult<DeviceDto>>> ListAsync(PagedQuery query, Guid? customerId, bool includeInactive = false, CancellationToken ct = default);
     Task<Result<DeviceDto>> GetAsync(Guid id, CancellationToken ct = default);
     Task<Result<DeviceDto>> CreateAsync(CreateDeviceRequest request, CancellationToken ct = default);
     Task<Result<DeviceDto>> UpdateAsync(Guid id, CreateDeviceRequest request, CancellationToken ct = default);
+    Task<Result<DeviceDto>> SetActiveAsync(Guid id, bool isActive, CancellationToken ct = default);
 }
 
 public sealed class DeviceService : IDeviceService
@@ -66,13 +69,15 @@ public sealed class DeviceService : IDeviceService
         _validator = validator;
     }
 
-    public async Task<Result<PagedResult<DeviceDto>>> ListAsync(PagedQuery query, Guid? customerId, CancellationToken ct = default)
+    public async Task<Result<PagedResult<DeviceDto>>> ListAsync(PagedQuery query, Guid? customerId, bool includeInactive = false, CancellationToken ct = default)
     {
         var auth = AuthorizationGuard.Require(_user, Permissions.DevicesRead);
         if (!auth.IsSuccess) return Result<PagedResult<DeviceDto>>.Failure(auth.ErrorCode!, auth.ErrorMessage!);
 
         var orgId = _user.OrganizationId!.Value;
         var q = _db.Devices.AsNoTracking().Where(d => d.OrganizationId == orgId);
+        if (!includeInactive)
+            q = q.Where(d => d.IsActive);
         if (customerId.HasValue) q = q.Where(d => d.CustomerId == customerId);
 
         if (!string.IsNullOrWhiteSpace(query.Search))
@@ -88,7 +93,7 @@ public sealed class DeviceService : IDeviceService
         q = q.OrderByDescending(d => d.CreatedAt);
         var total = await q.CountAsync(ct);
         var items = await q.Skip(query.Skip).Take(query.Take)
-            .Select(d => new DeviceDto(d.Id, d.CustomerId, d.DeviceType, d.Brand, d.Model, d.SerialNumber, d.Imei, d.Color, d.Condition, d.Accessories, d.IdentifyingDetails, d.CreatedAt))
+            .Select(d => new DeviceDto(d.Id, d.CustomerId, d.DeviceType, d.Brand, d.Model, d.SerialNumber, d.Imei, d.Color, d.Condition, d.Accessories, d.IdentifyingDetails, d.IsActive, d.CreatedAt))
             .ToListAsync(ct);
 
         return Result<PagedResult<DeviceDto>>.Success(new PagedResult<DeviceDto>
@@ -118,7 +123,7 @@ public sealed class DeviceService : IDeviceService
             return Result<DeviceDto>.Failure(ErrorCodes.Validation, validation.Errors[0].ErrorMessage);
 
         var customerExists = await _db.Customers.AnyAsync(
-            c => c.Id == request.CustomerId && c.OrganizationId == _user.OrganizationId, ct);
+            c => c.Id == request.CustomerId && c.OrganizationId == _user.OrganizationId && c.IsActive, ct);
         if (!customerExists)
             return Result<DeviceDto>.Failure(ErrorCodes.NotFound, "Customer not found.");
 
@@ -134,7 +139,8 @@ public sealed class DeviceService : IDeviceService
             Color = request.Color,
             Condition = request.Condition,
             Accessories = request.Accessories,
-            IdentifyingDetails = request.IdentifyingDetails
+            IdentifyingDetails = request.IdentifyingDetails,
+            IsActive = request.IsActive ?? true
         };
         _db.Devices.Add(entity);
         await _db.SaveChangesAsync(ct);
@@ -151,6 +157,7 @@ public sealed class DeviceService : IDeviceService
         if (entity is null) return Result<DeviceDto>.Failure(ErrorCodes.NotFound, "Device not found.");
 
         var before = ToDto(entity);
+        entity.CustomerId = request.CustomerId;
         entity.DeviceType = request.DeviceType.Trim();
         entity.Brand = request.Brand.Trim();
         entity.Model = request.Model.Trim();
@@ -160,12 +167,30 @@ public sealed class DeviceService : IDeviceService
         entity.Condition = request.Condition;
         entity.Accessories = request.Accessories;
         entity.IdentifyingDetails = request.IdentifyingDetails;
+        if (request.IsActive.HasValue)
+            entity.IsActive = request.IsActive.Value;
         entity.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
         await _audit.WriteAsync("update", "Device", entity.Id.ToString(), before, ToDto(entity), ct);
         return Result<DeviceDto>.Success(ToDto(entity));
     }
 
+    public async Task<Result<DeviceDto>> SetActiveAsync(Guid id, bool isActive, CancellationToken ct = default)
+    {
+        var auth = AuthorizationGuard.Require(_user, Permissions.DevicesWrite);
+        if (!auth.IsSuccess) return Result<DeviceDto>.Failure(auth.ErrorCode!, auth.ErrorMessage!);
+
+        var entity = await _db.Devices.FirstOrDefaultAsync(x => x.Id == id && x.OrganizationId == _user.OrganizationId, ct);
+        if (entity is null) return Result<DeviceDto>.Failure(ErrorCodes.NotFound, "Device not found.");
+
+        var before = ToDto(entity);
+        entity.IsActive = isActive;
+        entity.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        await _audit.WriteAsync(isActive ? "activate" : "deactivate", "Device", entity.Id.ToString(), before, ToDto(entity), ct);
+        return Result<DeviceDto>.Success(ToDto(entity));
+    }
+
     private static DeviceDto ToDto(Device d) =>
-        new(d.Id, d.CustomerId, d.DeviceType, d.Brand, d.Model, d.SerialNumber, d.Imei, d.Color, d.Condition, d.Accessories, d.IdentifyingDetails, d.CreatedAt);
+        new(d.Id, d.CustomerId, d.DeviceType, d.Brand, d.Model, d.SerialNumber, d.Imei, d.Color, d.Condition, d.Accessories, d.IdentifyingDetails, d.IsActive, d.CreatedAt);
 }

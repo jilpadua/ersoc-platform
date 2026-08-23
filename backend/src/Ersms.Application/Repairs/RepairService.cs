@@ -45,10 +45,21 @@ public sealed record RepairDetailDto(
     DateTimeOffset? CompletedAt,
     IReadOnlyList<RepairServiceLineDto> ServiceLines,
     IReadOnlyList<RepairStatusHistoryDto> StatusHistory,
-    IReadOnlyList<RepairNoteDto> Notes);
+    IReadOnlyList<RepairNoteDto> Notes,
+    IReadOnlyList<RepairStatusDto> AllowedNextStatuses);
 
 public sealed record RepairServiceLineDto(Guid Id, Guid? ServiceId, string ServiceName, decimal Quantity, decimal UnitPrice, decimal Discount, decimal LineTotal);
-public sealed record RepairStatusHistoryDto(Guid Id, Guid? PreviousStatusId, Guid NewStatusId, Guid ActorUserId, DateTimeOffset ChangedAt, string? Reason);
+public sealed record RepairStatusHistoryDto(
+    Guid Id,
+    Guid? PreviousStatusId,
+    string? PreviousStatusCode,
+    string? PreviousStatusName,
+    Guid NewStatusId,
+    string NewStatusCode,
+    string NewStatusName,
+    Guid ActorUserId,
+    DateTimeOffset ChangedAt,
+    string? Reason);
 public sealed record RepairNoteDto(Guid Id, Guid AuthorUserId, string Body, DateTimeOffset CreatedAt);
 public sealed record RepairStatusDto(Guid Id, string Code, string Name, int SortOrder, bool IsTerminal);
 
@@ -369,6 +380,18 @@ public sealed class RepairService : IRepairService
             .FirstOrDefaultAsync(r => r.Id == id && r.OrganizationId == _user.OrganizationId, ct);
         if (repair is null) return null;
 
+        var allowedCodes = RepairWorkflow.GetAllowedNext(repair.Status!.Code);
+        var statusDefs = await _db.RepairStatusDefinitions.AsNoTracking()
+            .Where(s => s.OrganizationId == _user.OrganizationId)
+            .Select(s => new { s.Id, s.Code, s.Name, s.SortOrder, s.IsTerminal, s.IsActive })
+            .ToListAsync(ct);
+        var byId = statusDefs.ToDictionary(s => s.Id);
+        var allowed = statusDefs
+            .Where(s => s.IsActive && allowedCodes.Contains(s.Code))
+            .OrderBy(s => s.SortOrder)
+            .Select(s => new RepairStatusDto(s.Id, s.Code, s.Name, s.SortOrder, s.IsTerminal))
+            .ToList();
+
         return new RepairDetailDto(
             repair.Id,
             repair.RepairNumber,
@@ -376,7 +399,7 @@ public sealed class RepairService : IRepairService
             repair.CustomerId,
             repair.DeviceId,
             repair.StatusId,
-            repair.Status!.Code,
+            repair.Status.Code,
             repair.Status.Name,
             repair.ReportedProblem,
             repair.Condition,
@@ -393,7 +416,30 @@ public sealed class RepairService : IRepairService
             repair.DueAt,
             repair.CompletedAt,
             repair.ServiceLines.Select(l => new RepairServiceLineDto(l.Id, l.ServiceId, l.ServiceName, l.Quantity, l.UnitPrice, l.Discount, l.LineTotal)).ToList(),
-            repair.StatusHistory.OrderBy(h => h.ChangedAt).Select(h => new RepairStatusHistoryDto(h.Id, h.PreviousStatusId, h.NewStatusId, h.ActorUserId, h.ChangedAt, h.Reason)).ToList(),
-            repair.Notes.OrderByDescending(n => n.CreatedAt).Select(n => new RepairNoteDto(n.Id, n.AuthorUserId, n.Body, n.CreatedAt)).ToList());
+            repair.StatusHistory.OrderBy(h => h.ChangedAt).Select(h =>
+            {
+                byId.TryGetValue(h.NewStatusId, out var next);
+                string? prevCode = null;
+                string? prevName = null;
+                if (h.PreviousStatusId is Guid prevId && byId.TryGetValue(prevId, out var prev))
+                {
+                    prevCode = prev.Code;
+                    prevName = prev.Name;
+                }
+
+                return new RepairStatusHistoryDto(
+                    h.Id,
+                    h.PreviousStatusId,
+                    prevCode,
+                    prevName,
+                    h.NewStatusId,
+                    next?.Code ?? string.Empty,
+                    next?.Name ?? string.Empty,
+                    h.ActorUserId,
+                    h.ChangedAt,
+                    h.Reason);
+            }).ToList(),
+            repair.Notes.OrderByDescending(n => n.CreatedAt).Select(n => new RepairNoteDto(n.Id, n.AuthorUserId, n.Body, n.CreatedAt)).ToList(),
+            allowed);
     }
 }

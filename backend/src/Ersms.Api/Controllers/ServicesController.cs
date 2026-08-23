@@ -15,9 +15,9 @@ public sealed class ServicesController : ControllerBase
     public ServicesController(IServiceCatalogService services) => _services = services;
 
     [HttpGet]
-    public async Task<IActionResult> List([FromQuery] PagedQuery query, CancellationToken ct)
+    public async Task<IActionResult> List([FromQuery] PagedQuery query, [FromQuery] bool includeInactive = false, CancellationToken ct = default)
     {
-        var result = await _services.ListAsync(query, ct);
+        var result = await _services.ListAsync(query, includeInactive, ct);
         return result.IsSuccess ? Ok(result.Value) : ApiErrors.FromResult(result);
     }
 
@@ -32,6 +32,20 @@ public sealed class ServicesController : ControllerBase
     public async Task<IActionResult> Update(Guid id, [FromBody] CreateServiceRequest request, CancellationToken ct)
     {
         var result = await _services.UpdateAsync(id, request, ct);
+        return result.IsSuccess ? Ok(result.Value) : ApiErrors.FromResult(result);
+    }
+
+    [HttpPost("{id:guid}/deactivate")]
+    public async Task<IActionResult> Deactivate(Guid id, CancellationToken ct)
+    {
+        var result = await _services.SetActiveAsync(id, false, ct);
+        return result.IsSuccess ? Ok(result.Value) : ApiErrors.FromResult(result);
+    }
+
+    [HttpPost("{id:guid}/activate")]
+    public async Task<IActionResult> Activate(Guid id, CancellationToken ct)
+    {
+        var result = await _services.SetActiveAsync(id, true, ct);
         return result.IsSuccess ? Ok(result.Value) : ApiErrors.FromResult(result);
     }
 

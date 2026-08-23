@@ -15,9 +15,9 @@ public sealed class CustomersController : ControllerBase
     public CustomersController(ICustomerService customers) => _customers = customers;
 
     [HttpGet]
-    public async Task<IActionResult> List([FromQuery] PagedQuery query, CancellationToken ct)
+    public async Task<IActionResult> List([FromQuery] PagedQuery query, [FromQuery] bool includeInactive = false, CancellationToken ct = default)
     {
-        var result = await _customers.ListAsync(query, ct);
+        var result = await _customers.ListAsync(query, includeInactive, ct);
         return result.IsSuccess ? Ok(result.Value) : ApiErrors.FromResult(result);
     }
 
@@ -39,6 +39,20 @@ public sealed class CustomersController : ControllerBase
     public async Task<IActionResult> Update(Guid id, [FromBody] CreateCustomerRequest request, CancellationToken ct)
     {
         var result = await _customers.UpdateAsync(id, request, ct);
+        return result.IsSuccess ? Ok(result.Value) : ApiErrors.FromResult(result);
+    }
+
+    [HttpPost("{id:guid}/deactivate")]
+    public async Task<IActionResult> Deactivate(Guid id, CancellationToken ct)
+    {
+        var result = await _customers.SetActiveAsync(id, false, ct);
+        return result.IsSuccess ? Ok(result.Value) : ApiErrors.FromResult(result);
+    }
+
+    [HttpPost("{id:guid}/activate")]
+    public async Task<IActionResult> Activate(Guid id, CancellationToken ct)
+    {
+        var result = await _customers.SetActiveAsync(id, true, ct);
         return result.IsSuccess ? Ok(result.Value) : ApiErrors.FromResult(result);
     }
 }
