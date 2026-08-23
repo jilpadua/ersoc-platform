@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ersms-postgres
+    environment:
+      POSTGRES_USER: ersms
+      POSTGRES_PASSWORD: ersms_dev_password
+      POSTGRES_DB: ersms
+    ports:
+      - "5432:5432"
+    volumes:
+      - ersms_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ersms -d ersms"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  ersms_pg_data:

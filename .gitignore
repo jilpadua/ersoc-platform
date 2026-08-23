@@ -1,0 +1,30 @@
+# Ignore
+.DS_Store
+Thumbs.db
+*.user
+*.suo
+.vs/
+.idea/
+.cursor/
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+**/appsettings.*.local.json
+**/App_Data/
+
+# .NET
+**/bin/
+**/obj/
+**/TestResults/
+
+# Node
+**/node_modules/
+**/.next/
+**/out/
+**/dist/
+frontend/npm-debug.log*
+
+# Docker volumes / local uploads
+uploads/
