@@ -15,16 +15,16 @@ public sealed class DevicesController : ControllerBase
     public DevicesController(IDeviceService devices) => _devices = devices;
 
     [HttpGet("devices")]
-    public async Task<IActionResult> List([FromQuery] PagedQuery query, [FromQuery] Guid? customerId, CancellationToken ct)
+    public async Task<IActionResult> List([FromQuery] PagedQuery query, [FromQuery] Guid? customerId, [FromQuery] bool includeInactive = false, CancellationToken ct = default)
     {
-        var result = await _devices.ListAsync(query, customerId, ct);
+        var result = await _devices.ListAsync(query, customerId, includeInactive, ct);
         return result.IsSuccess ? Ok(result.Value) : ApiErrors.FromResult(result);
     }
 
     [HttpGet("customers/{customerId:guid}/devices")]
-    public async Task<IActionResult> ListForCustomer(Guid customerId, [FromQuery] PagedQuery query, CancellationToken ct)
+    public async Task<IActionResult> ListForCustomer(Guid customerId, [FromQuery] PagedQuery query, [FromQuery] bool includeInactive = false, CancellationToken ct = default)
     {
-        var result = await _devices.ListAsync(query, customerId, ct);
+        var result = await _devices.ListAsync(query, customerId, includeInactive, ct);
         return result.IsSuccess ? Ok(result.Value) : ApiErrors.FromResult(result);
     }
 
@@ -46,6 +46,20 @@ public sealed class DevicesController : ControllerBase
     public async Task<IActionResult> Update(Guid id, [FromBody] CreateDeviceRequest request, CancellationToken ct)
     {
         var result = await _devices.UpdateAsync(id, request, ct);
+        return result.IsSuccess ? Ok(result.Value) : ApiErrors.FromResult(result);
+    }
+
+    [HttpPost("devices/{id:guid}/deactivate")]
+    public async Task<IActionResult> Deactivate(Guid id, CancellationToken ct)
+    {
+        var result = await _devices.SetActiveAsync(id, false, ct);
+        return result.IsSuccess ? Ok(result.Value) : ApiErrors.FromResult(result);
+    }
+
+    [HttpPost("devices/{id:guid}/activate")]
+    public async Task<IActionResult> Activate(Guid id, CancellationToken ct)
+    {
+        var result = await _devices.SetActiveAsync(id, true, ct);
         return result.IsSuccess ? Ok(result.Value) : ApiErrors.FromResult(result);
     }
 }

@@ -108,6 +108,12 @@ public class AuthAndRepairApiTests : IClassFixture<ApiFactory>
         updated.GetProperty("statusCode").GetString().Should().Be("DIAGNOSIS");
         updated.GetProperty("statusHistory").EnumerateArray().Count().Should().BeGreaterThan(1);
 
+        var lastHistory = updated.GetProperty("statusHistory").EnumerateArray().Last();
+        lastHistory.GetProperty("previousStatusName").GetString().Should().Be("Received");
+        lastHistory.GetProperty("newStatusName").GetString().Should().Be("Diagnosis");
+        lastHistory.GetProperty("previousStatusCode").GetString().Should().Be("RECEIVED");
+        lastHistory.GetProperty("newStatusCode").GetString().Should().Be("DIAGNOSIS");
+
         var bad = await _client.PatchAsJsonAsync($"/api/v1/repairs/{repairId}/status", new { statusCode = "COMPLETED", reason = "skip" });
         bad.StatusCode.Should().Be(HttpStatusCode.Conflict);
 
@@ -115,6 +121,82 @@ public class AuthAndRepairApiTests : IClassFixture<ApiFactory>
         audit.EnsureSuccessStatusCode();
         var auditBody = await audit.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
         auditBody.GetProperty("totalCount").GetInt32().Should().BeGreaterThan(0);
+    }
+
+    [Fact]
+    public async Task Customer_update_deactivate_and_allowed_repair_statuses()
+    {
+        await LoginAsync();
+
+        var create = await _client.PostAsJsonAsync("/api/v1/customers", new
+        {
+            name = "Edit Me",
+            email = "edit@example.com",
+            phone = "09170001111"
+        });
+        create.EnsureSuccessStatusCode();
+        var customer = await create.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
+        var customerId = customer.GetProperty("id").GetGuid();
+        customer.GetProperty("email").GetString().Should().Be("edit@example.com");
+        customer.GetProperty("isActive").GetBoolean().Should().BeTrue();
+
+        var patch = await _client.PatchAsJsonAsync($"/api/v1/customers/{customerId}", new
+        {
+            name = "Edited Name",
+            email = "edited@example.com",
+            phone = "09170002222"
+        });
+        patch.EnsureSuccessStatusCode();
+        var updated = await patch.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
+        updated.GetProperty("name").GetString().Should().Be("Edited Name");
+        updated.GetProperty("email").GetString().Should().Be("edited@example.com");
+
+        var deactivate = await _client.PostAsync($"/api/v1/customers/{customerId}/deactivate", null);
+        deactivate.EnsureSuccessStatusCode();
+        var inactive = await deactivate.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
+        inactive.GetProperty("isActive").GetBoolean().Should().BeFalse();
+
+        var listActive = await _client.GetAsync("/api/v1/customers?pageSize=100");
+        listActive.EnsureSuccessStatusCode();
+        var activeBody = await listActive.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
+        activeBody.GetProperty("items").EnumerateArray()
+            .Any(x => x.GetProperty("id").GetGuid() == customerId)
+            .Should().BeFalse();
+
+        var listAll = await _client.GetAsync("/api/v1/customers?pageSize=100&includeInactive=true");
+        listAll.EnsureSuccessStatusCode();
+        var allBody = await listAll.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
+        allBody.GetProperty("items").EnumerateArray()
+            .Any(x => x.GetProperty("id").GetGuid() == customerId)
+            .Should().BeTrue();
+
+        var activate = await _client.PostAsync($"/api/v1/customers/{customerId}/activate", null);
+        activate.EnsureSuccessStatusCode();
+
+        var deviceRes = await _client.PostAsJsonAsync("/api/v1/devices", new
+        {
+            customerId,
+            deviceType = "Phone",
+            brand = "Apple",
+            model = "iPhone"
+        });
+        deviceRes.EnsureSuccessStatusCode();
+        var deviceId = (await deviceRes.Content.ReadFromJsonAsync<JsonElement>(JsonOptions)).GetProperty("id").GetGuid();
+
+        var repairRes = await _client.PostAsJsonAsync("/api/v1/repairs", new
+        {
+            customerId,
+            deviceId,
+            reportedProblem = "Screen crack"
+        });
+        repairRes.EnsureSuccessStatusCode();
+        var repair = await repairRes.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
+        var codes = repair.GetProperty("allowedNextStatuses").EnumerateArray()
+            .Select(x => x.GetProperty("code").GetString())
+            .ToList();
+        codes.Should().Contain("DIAGNOSIS");
+        codes.Should().Contain("CANCELLED");
+        codes.Should().NotContain("COMPLETED");
     }
 
     private async Task LoginAsync()

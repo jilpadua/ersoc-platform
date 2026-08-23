@@ -36,9 +36,10 @@ public sealed class CreateServiceValidator : AbstractValidator<CreateServiceRequ
 
 public interface IServiceCatalogService
 {
-    Task<Result<PagedResult<ServiceDto>>> ListAsync(PagedQuery query, CancellationToken ct = default);
+    Task<Result<PagedResult<ServiceDto>>> ListAsync(PagedQuery query, bool includeInactive = false, CancellationToken ct = default);
     Task<Result<ServiceDto>> CreateAsync(CreateServiceRequest request, CancellationToken ct = default);
     Task<Result<ServiceDto>> UpdateAsync(Guid id, CreateServiceRequest request, CancellationToken ct = default);
+    Task<Result<ServiceDto>> SetActiveAsync(Guid id, bool isActive, CancellationToken ct = default);
     Task<Result<IReadOnlyList<(Guid Id, string Name)>>> ListCategoriesAsync(CancellationToken ct = default);
     Task<Result<(Guid Id, string Name)>> CreateCategoryAsync(string name, CancellationToken ct = default);
 }
@@ -58,13 +59,15 @@ public sealed class ServiceCatalogService : IServiceCatalogService
         _validator = validator;
     }
 
-    public async Task<Result<PagedResult<ServiceDto>>> ListAsync(PagedQuery query, CancellationToken ct = default)
+    public async Task<Result<PagedResult<ServiceDto>>> ListAsync(PagedQuery query, bool includeInactive = false, CancellationToken ct = default)
     {
         var auth = AuthorizationGuard.Require(_user, Permissions.ServicesRead);
         if (!auth.IsSuccess) return Result<PagedResult<ServiceDto>>.Failure(auth.ErrorCode!, auth.ErrorMessage!);
 
         var orgId = _user.OrganizationId!.Value;
         var q = _db.Services.AsNoTracking().Include(s => s.Category).Where(s => s.OrganizationId == orgId);
+        if (!includeInactive)
+            q = q.Where(s => s.IsActive);
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
             var s = query.Search.Trim().ToLower();
@@ -127,6 +130,23 @@ public sealed class ServiceCatalogService : IServiceCatalogService
         await _db.SaveChangesAsync(ct);
         var after = new ServiceDto(entity.Id, entity.CategoryId, null, entity.Name, entity.Description, entity.DefaultPrice, entity.WarrantyDays, entity.IsActive);
         await _audit.WriteAsync("update", "Service", entity.Id.ToString(), before, after, ct);
+        return Result<ServiceDto>.Success(after);
+    }
+
+    public async Task<Result<ServiceDto>> SetActiveAsync(Guid id, bool isActive, CancellationToken ct = default)
+    {
+        var auth = AuthorizationGuard.Require(_user, Permissions.ServicesWrite);
+        if (!auth.IsSuccess) return Result<ServiceDto>.Failure(auth.ErrorCode!, auth.ErrorMessage!);
+
+        var entity = await _db.Services.FirstOrDefaultAsync(s => s.Id == id && s.OrganizationId == _user.OrganizationId, ct);
+        if (entity is null) return Result<ServiceDto>.Failure(ErrorCodes.NotFound, "Service not found.");
+
+        var before = new ServiceDto(entity.Id, entity.CategoryId, null, entity.Name, entity.Description, entity.DefaultPrice, entity.WarrantyDays, entity.IsActive);
+        entity.IsActive = isActive;
+        entity.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        var after = new ServiceDto(entity.Id, entity.CategoryId, null, entity.Name, entity.Description, entity.DefaultPrice, entity.WarrantyDays, entity.IsActive);
+        await _audit.WriteAsync(isActive ? "activate" : "deactivate", "Service", entity.Id.ToString(), before, after, ct);
         return Result<ServiceDto>.Success(after);
     }
 

@@ -15,6 +15,7 @@ public class Device : AuditableEntity
     public string? Condition { get; set; }
     public string? Accessories { get; set; }
     public string? IdentifyingDetails { get; set; }
+    public bool IsActive { get; set; } = true;
     public ICollection<DevicePhoto> Photos { get; set; } = new List<DevicePhoto>();
 }
 

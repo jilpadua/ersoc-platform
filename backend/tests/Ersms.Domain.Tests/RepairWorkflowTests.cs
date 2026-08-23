@@ -43,4 +43,18 @@ public class RepairWorkflowTests
         repair.Subtotal.Should().Be(230);
         repair.TotalAmount.Should().Be(220);
     }
+
+    [Theory]
+    [InlineData("RECEIVED", "DIAGNOSIS")]
+    [InlineData("RECEIVED", "CANCELLED")]
+    public void GetAllowedNext_includes_expected_codes(string from, string expected)
+    {
+        RepairWorkflow.GetAllowedNext(from).Should().Contain(expected);
+    }
+
+    [Fact]
+    public void GetAllowedNext_completed_is_empty()
+    {
+        RepairWorkflow.GetAllowedNext("COMPLETED").Should().BeEmpty();
+    }
 }

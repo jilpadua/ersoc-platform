@@ -1,9 +1,11 @@
 "use client";
 
 import { AppShell } from "@/components/app-shell";
-import { api } from "@/lib/api";
+import { api, ApiClientError } from "@/lib/api";
 import { FormEvent, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+
+type RepairStatus = { code: string; name: string };
 
 type RepairDetail = {
   id: string;
@@ -15,34 +17,34 @@ type RepairDetail = {
   estimateAmount?: number;
   totalAmount: number;
   approvalStatus: string;
-  statusHistory: { changedAt: string; reason?: string; newStatusId: string }[];
+  statusHistory: {
+    changedAt: string;
+    reason?: string;
+    previousStatusName?: string | null;
+    newStatusName: string;
+  }[];
   notes: { id: string; body: string; createdAt: string }[];
   serviceLines: { serviceName: string; lineTotal: number }[];
+  allowedNextStatuses: RepairStatus[];
 };
-
-type Status = { code: string; name: string };
 
 export default function RepairDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [repair, setRepair] = useState<RepairDetail | null>(null);
-  const [statuses, setStatuses] = useState<Status[]>([]);
   const [nextStatus, setNextStatus] = useState("");
   const [reason, setReason] = useState("");
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   async function load() {
-    const [r, s] = await Promise.all([
-      api<RepairDetail>(`/api/v1/repairs/${id}`),
-      api<Status[]>("/api/v1/repairs/statuses"),
-    ]);
+    const r = await api<RepairDetail>(`/api/v1/repairs/${id}`);
     setRepair(r);
-    setStatuses(s);
+    setNextStatus(r.allowedNextStatuses[0]?.code ?? "");
   }
 
   useEffect(() => {
     if (!id) return;
-    load().catch((e) => setError(e.message));
+    load().catch((e) => setError(e instanceof ApiClientError ? e.message : e.message));
   }, [id]);
 
   async function changeStatus(e: FormEvent) {
@@ -56,23 +58,30 @@ export default function RepairDetailPage() {
       setReason("");
       await load();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed");
+      setError(err instanceof ApiClientError ? err.message : "Failed");
     }
   }
 
   async function addNote(e: FormEvent) {
     e.preventDefault();
-    await api(`/api/v1/repairs/${id}/notes`, {
-      method: "POST",
-      body: JSON.stringify({ body: note }),
-    });
-    setNote("");
-    await load();
+    setError(null);
+    try {
+      await api(`/api/v1/repairs/${id}/notes`, {
+        method: "POST",
+        body: JSON.stringify({ body: note }),
+      });
+      setNote("");
+      await load();
+    } catch (err: unknown) {
+      setError(err instanceof ApiClientError ? err.message : "Failed");
+    }
   }
 
   if (!repair) {
     return <AppShell><p className="text-sm text-slate-500">Loading…</p></AppShell>;
   }
+
+  const canAdvance = repair.allowedNextStatuses.length > 0;
 
   return (
     <AppShell>
@@ -91,14 +100,22 @@ export default function RepairDetailPage() {
       {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
 
       <form onSubmit={changeStatus} className="mt-6 flex flex-wrap gap-2 rounded-lg border border-slate-200 bg-white p-4">
-        <select required value={nextStatus} onChange={(e) => setNextStatus(e.target.value)} className="rounded-md border border-slate-300 px-3 py-2 text-sm">
-          <option value="">Change status…</option>
-          {statuses.filter((s) => s.code !== repair.statusCode).map((s) => (
-            <option key={s.code} value={s.code}>{s.name}</option>
-          ))}
-        </select>
-        <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason (optional)" className="min-w-[200px] flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm" />
-        <button className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white">Update status</button>
+        {canAdvance ? (
+          <>
+            <select required value={nextStatus} onChange={(e) => setNextStatus(e.target.value)} className="rounded-md border border-slate-300 px-3 py-2 text-sm">
+              {repair.allowedNextStatuses.map((s) => (
+                <option key={s.code} value={s.code}>{s.name}</option>
+              ))}
+            </select>
+            <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason (optional)" className="min-w-[200px] flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm" />
+            <button className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white">Update status</button>
+            <p className="w-full text-xs text-slate-500">
+              Only the next allowed workflow steps are listed (e.g. Received → Diagnosis or Cancelled).
+            </p>
+          </>
+        ) : (
+          <p className="text-sm text-slate-600">This repair is in a terminal status. No further transitions are allowed.</p>
+        )}
       </form>
 
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
@@ -108,7 +125,10 @@ export default function RepairDetailPage() {
             {repair.statusHistory.map((h, i) => (
               <li key={i} className="border-b border-slate-100 pb-2">
                 <div className="font-mono text-xs text-slate-500">{new Date(h.changedAt).toLocaleString()}</div>
-                <div>{h.reason ?? "Status changed"}</div>
+                <div className="font-medium">
+                  {h.previousStatusName ?? "—"} → {h.newStatusName || "Unknown"}
+                </div>
+                {h.reason && <div className="text-slate-600">{h.reason}</div>}
               </li>
             ))}
           </ul>
