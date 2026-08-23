@@ -20,9 +20,12 @@ const emptyForm = {
   sku: "",
   name: "",
   description: "",
-  unitCost: "0",
-  reorderLevel: "0",
+  unitCost: "",
+  reorderLevel: "",
 };
+
+const fieldClass = "rounded-md border border-slate-300 px-3 py-2 text-sm";
+const labelClass = "mb-1 block text-xs font-medium text-slate-600";
 
 export default function PartsPage() {
   const [items, setItems] = useState<Part[]>([]);
@@ -67,8 +70,8 @@ export default function PartsPage() {
         sku: form.sku,
         name: form.name,
         description: form.description || null,
-        unitCost: Number(form.unitCost),
-        reorderLevel: Number(form.reorderLevel),
+        unitCost: Number(form.unitCost || 0),
+        reorderLevel: Number(form.reorderLevel || 0),
       };
       if (editingId) {
         await api(`/api/v1/parts/${editingId}`, { method: "PATCH", body: JSON.stringify(body) });
@@ -127,21 +130,67 @@ export default function PartsPage() {
           Show inactive
         </label>
       </div>
-      <form onSubmit={onSubmit} className="mb-4 grid gap-2 rounded-lg border border-slate-200 bg-white p-4 md:grid-cols-3">
-        <input value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} placeholder="SKU" required className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
-        <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Name" required className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
-        <input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Description" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
-        <input type="number" step="0.01" min="0" value={form.unitCost} onChange={(e) => setForm({ ...form, unitCost: e.target.value })} placeholder="Unit cost" required className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
-        <input type="number" step="0.01" min="0" value={form.reorderLevel} onChange={(e) => setForm({ ...form, reorderLevel: e.target.value })} placeholder="Reorder level" required className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
-        <div className="flex gap-2">
+      <form onSubmit={onSubmit} className="mb-4 grid gap-3 rounded-lg border border-slate-200 bg-white p-4 md:grid-cols-3">
+        <div>
+          <label className={labelClass}>SKU</label>
+          <input value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} placeholder="SKU" required className={fieldClass + " w-full"} />
+        </div>
+        <div>
+          <label className={labelClass}>Name</label>
+          <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Name" required className={fieldClass + " w-full"} />
+        </div>
+        <div>
+          <label className={labelClass}>Description</label>
+          <input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Optional" className={fieldClass + " w-full"} />
+        </div>
+        <div>
+          <label className={labelClass}>Unit cost</label>
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            value={form.unitCost}
+            onChange={(e) => setForm({ ...form, unitCost: e.target.value })}
+            placeholder="0.00"
+            required
+            className={fieldClass + " w-full"}
+          />
+        </div>
+        <div>
+          <label className={labelClass}>Reorder level</label>
+          <input
+            type="number"
+            step="1"
+            min="0"
+            value={form.reorderLevel}
+            onChange={(e) => setForm({ ...form, reorderLevel: e.target.value })}
+            placeholder="0"
+            required
+            className={fieldClass + " w-full"}
+          />
+        </div>
+        <div className="flex items-end gap-2">
           <button className="flex-1 rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white">{editingId ? "Save" : "Add part"}</button>
           {editingId && <button type="button" onClick={cancelEdit} className="rounded-md border border-slate-300 px-3 py-2 text-sm">Cancel</button>}
         </div>
       </form>
       {adjustId && (
-        <form onSubmit={submitAdjust} className="mb-4 flex flex-wrap gap-2 rounded-lg border border-amber-200 bg-amber-50 p-4">
-          <input type="number" step="0.01" value={adjustDelta} onChange={(e) => setAdjustDelta(e.target.value)} required className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
-          <input value={adjustReason} onChange={(e) => setAdjustReason(e.target.value)} placeholder="Reason" className="min-w-[180px] flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm" />
+        <form onSubmit={submitAdjust} className="mb-4 flex flex-wrap items-end gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4">
+          <div>
+            <label className={labelClass}>Quantity delta</label>
+            <input
+              type="number"
+              step="1"
+              value={adjustDelta}
+              onChange={(e) => setAdjustDelta(e.target.value)}
+              required
+              className={fieldClass}
+            />
+          </div>
+          <div className="min-w-[180px] flex-1">
+            <label className={labelClass}>Reason</label>
+            <input value={adjustReason} onChange={(e) => setAdjustReason(e.target.value)} placeholder="Optional" className={fieldClass + " w-full"} />
+          </div>
           <button className="rounded-md bg-slate-900 px-3 py-2 text-sm text-white">Post adjustment</button>
           <button type="button" onClick={() => setAdjustId(null)} className="rounded-md border border-slate-300 px-3 py-2 text-sm">Cancel</button>
         </form>

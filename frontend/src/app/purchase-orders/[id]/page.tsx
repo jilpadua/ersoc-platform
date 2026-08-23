@@ -124,12 +124,14 @@ export default function PurchaseOrderDetailPage() {
                 <td className="py-2 font-mono">₱{l.unitCost}</td>
                 {canReceive && (
                   <td className="py-2">
+                    <label className="sr-only">Receive qty for {l.partSku}</label>
                     <input
                       type="number"
                       min="0"
-                      step="0.01"
+                      step="1"
                       value={recvQty[l.id] ?? "0"}
                       onChange={(e) => setRecvQty({ ...recvQty, [l.id]: e.target.value })}
+                      aria-label={`Receive quantity for ${l.partSku ?? l.partName ?? "line"}`}
                       className="w-24 rounded-md border border-slate-300 px-2 py-1 text-sm"
                     />
                   </td>

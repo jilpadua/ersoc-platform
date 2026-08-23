@@ -15,6 +15,9 @@ type PoList = {
   createdAt: string;
 };
 
+const fieldClass = "w-full rounded-md border border-slate-300 px-3 py-2 text-sm";
+const labelClass = "mb-1 block text-xs font-medium text-slate-600";
+
 export default function PurchaseOrdersPage() {
   const [items, setItems] = useState<PoList[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -22,7 +25,7 @@ export default function PurchaseOrdersPage() {
   const [supplierId, setSupplierId] = useState("");
   const [partId, setPartId] = useState("");
   const [qty, setQty] = useState("1");
-  const [unitCost, setUnitCost] = useState("0");
+  const [unitCost, setUnitCost] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -55,7 +58,7 @@ export default function PurchaseOrdersPage() {
         method: "POST",
         body: JSON.stringify({
           supplierId,
-          lines: [{ partId, quantityOrdered: Number(qty), unitCost: Number(unitCost) }],
+          lines: [{ partId, quantityOrdered: Number(qty), unitCost: Number(unitCost || 0) }],
         }),
       });
       window.location.href = `/purchase-orders/${created.id}`;
@@ -67,27 +70,59 @@ export default function PurchaseOrdersPage() {
   return (
     <AppShell>
       <h1 className="mb-4 text-2xl font-semibold">Purchase orders</h1>
-      <form onSubmit={onCreate} className="mb-4 grid gap-2 rounded-lg border border-slate-200 bg-white p-4 md:grid-cols-3">
-        <select value={supplierId} onChange={(e) => setSupplierId(e.target.value)} required className="rounded-md border border-slate-300 px-3 py-2 text-sm">
-          <option value="">Supplier</option>
-          {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-        </select>
-        <select
-          value={partId}
-          onChange={(e) => {
-            setPartId(e.target.value);
-            const p = parts.find((x) => x.id === e.target.value);
-            if (p) setUnitCost(String(p.unitCost));
-          }}
-          required
-          className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-        >
-          <option value="">Part</option>
-          {parts.map((p) => <option key={p.id} value={p.id}>{p.sku} — {p.name}</option>)}
-        </select>
-        <input type="number" min="0.01" step="0.01" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="Qty" required className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
-        <input type="number" min="0" step="0.01" value={unitCost} onChange={(e) => setUnitCost(e.target.value)} placeholder="Unit cost" required className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
-        <button className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white">Create draft PO</button>
+      <form onSubmit={onCreate} className="mb-4 grid gap-3 rounded-lg border border-slate-200 bg-white p-4 md:grid-cols-3">
+        <div>
+          <label className={labelClass}>Supplier</label>
+          <select value={supplierId} onChange={(e) => setSupplierId(e.target.value)} required className={fieldClass}>
+            <option value="">Select supplier</option>
+            {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className={labelClass}>Part</label>
+          <select
+            value={partId}
+            onChange={(e) => {
+              setPartId(e.target.value);
+              const p = parts.find((x) => x.id === e.target.value);
+              setUnitCost(p ? String(p.unitCost) : "");
+            }}
+            required
+            className={fieldClass}
+          >
+            <option value="">Select part</option>
+            {parts.map((p) => <option key={p.id} value={p.id}>{p.sku} — {p.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className={labelClass}>Qty</label>
+          <input
+            type="number"
+            min="1"
+            step="1"
+            value={qty}
+            onChange={(e) => setQty(e.target.value)}
+            placeholder="1"
+            required
+            className={fieldClass}
+          />
+        </div>
+        <div>
+          <label className={labelClass}>Unit cost</label>
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            value={unitCost}
+            onChange={(e) => setUnitCost(e.target.value)}
+            placeholder="0.00"
+            required
+            className={fieldClass}
+          />
+        </div>
+        <div className="flex items-end">
+          <button className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white">Create draft PO</button>
+        </div>
       </form>
       <div className="mb-3">
         <select

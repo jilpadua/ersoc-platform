@@ -9,12 +9,13 @@ type Supplier = {
   name: string;
   email?: string;
   phone?: string;
-  contactName?: string;
   notes?: string;
   isActive: boolean;
 };
 
-const emptyForm = { name: "", email: "", phone: "", contactName: "", notes: "" };
+const emptyForm = { name: "", email: "", phone: "", notes: "" };
+const fieldClass = "w-full rounded-md border border-slate-300 px-3 py-2 text-sm";
+const labelClass = "mb-1 block text-xs font-medium text-slate-600";
 
 export default function SuppliersPage() {
   const [items, setItems] = useState<Supplier[]>([]);
@@ -38,7 +39,6 @@ export default function SuppliersPage() {
       name: s.name,
       email: s.email ?? "",
       phone: s.phone ?? "",
-      contactName: s.contactName ?? "",
       notes: s.notes ?? "",
     });
   }
@@ -56,7 +56,6 @@ export default function SuppliersPage() {
         name: form.name,
         email: form.email || null,
         phone: form.phone || null,
-        contactName: form.contactName || null,
         notes: form.notes || null,
       };
       if (editingId) {
@@ -98,13 +97,24 @@ export default function SuppliersPage() {
           Show inactive
         </label>
       </div>
-      <form onSubmit={onSubmit} className="mb-4 grid gap-2 rounded-lg border border-slate-200 bg-white p-4 md:grid-cols-3">
-        <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Name" required className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
-        <input value={form.contactName} onChange={(e) => setForm({ ...form, contactName: e.target.value })} placeholder="Contact" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
-        <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="Email" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
-        <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="Phone" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
-        <input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Notes" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
-        <div className="flex gap-2">
+      <form onSubmit={onSubmit} className="mb-4 grid gap-3 rounded-lg border border-slate-200 bg-white p-4 md:grid-cols-3">
+        <div>
+          <label className={labelClass}>Name</label>
+          <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Supplier name" required className={fieldClass} />
+        </div>
+        <div>
+          <label className={labelClass}>Email</label>
+          <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="Email" className={fieldClass} />
+        </div>
+        <div>
+          <label className={labelClass}>Phone</label>
+          <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="Phone" className={fieldClass} />
+        </div>
+        <div>
+          <label className={labelClass}>Notes</label>
+          <input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Optional" className={fieldClass} />
+        </div>
+        <div className="flex items-end gap-2">
           <button className="flex-1 rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white">{editingId ? "Save" : "Add supplier"}</button>
           {editingId && <button type="button" onClick={cancelEdit} className="rounded-md border border-slate-300 px-3 py-2 text-sm">Cancel</button>}
         </div>
@@ -115,7 +125,7 @@ export default function SuppliersPage() {
           <thead className="bg-slate-50 text-xs uppercase text-slate-500">
             <tr>
               <th className="px-4 py-3">Name</th>
-              <th className="px-4 py-3">Contact</th>
+              <th className="px-4 py-3">Email</th>
               <th className="px-4 py-3">Phone</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Actions</th>
@@ -125,7 +135,7 @@ export default function SuppliersPage() {
             {items.map((s) => (
               <tr key={s.id} className="border-t border-slate-100">
                 <td className="px-4 py-3 font-medium">{s.name}</td>
-                <td className="px-4 py-3">{s.contactName ?? s.email ?? "—"}</td>
+                <td className="px-4 py-3">{s.email ?? "—"}</td>
                 <td className="px-4 py-3">{s.phone ?? "—"}</td>
                 <td className="px-4 py-3">{s.isActive ? "Active" : "Inactive"}</td>
                 <td className="px-4 py-3">
