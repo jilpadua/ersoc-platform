@@ -1,4 +1,5 @@
 using Ersms.Application.Common;
+using Ersms.Domain.Sales;
 using Ersms.SharedKernel;
 using Microsoft.EntityFrameworkCore;
 
@@ -10,11 +11,13 @@ public sealed record DashboardDto(
     int OverdueRepairs,
     int CompletedToday,
     int LowStockParts,
+    decimal TodaySalesTotal,
+    int UnpaidInvoiceCount,
     IReadOnlyList<TechnicianWorkloadDto> TechnicianWorkload,
     DashboardUnavailableDto Unavailable);
 
 public sealed record TechnicianWorkloadDto(Guid? TechnicianUserId, int OpenRepairs);
-public sealed record DashboardUnavailableDto(string Sales, string Expenses, string CashBalance, string UnpaidInvoices);
+public sealed record DashboardUnavailableDto(string Expenses, string CashBalance);
 
 public interface IDashboardService
 {
@@ -92,17 +95,30 @@ public sealed class DashboardService : IDashboardService
             lowStock = parts.Count(p => onHand.GetValueOrDefault(p.Id) < p.ReorderLevel);
         }
 
+        var todaySalesTotal = await _db.Sales.AsNoTracking()
+            .Where(s => s.OrganizationId == orgId
+                        && s.Status == SaleStatuses.Completed
+                        && s.CompletedAt >= todayStart
+                        && s.CompletedAt < todayEnd)
+            .SumAsync(s => (decimal?)s.TotalAmount, ct) ?? 0m;
+
+        var unpaidInvoiceCount = await _db.Invoices.AsNoTracking()
+            .CountAsync(i => i.OrganizationId == orgId
+                             && i.BalanceDue > 0
+                             && i.Status != InvoiceStatuses.Voided
+                             && i.Status != InvoiceStatuses.Paid, ct);
+
         return Result<DashboardDto>.Success(new DashboardDto(
             todayRevenue,
             pending,
             overdue,
             completedToday,
             lowStock,
+            todaySalesTotal,
+            unpaidInvoiceCount,
             workload,
             new DashboardUnavailableDto(
-                "Available in Phase 3",
                 "Available in Phase 4",
-                "Available in Phase 4",
-                "Available in Phase 3")));
+                "Available in Phase 4")));
     }
 }

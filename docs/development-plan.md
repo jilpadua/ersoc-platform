@@ -53,6 +53,21 @@ Hard deletes of customers/devices/services (and posted transactional rows) are d
 
 **Do not start Phase 3 until Phase 2 is stable and the above checklist is met.**
 
+## Phase 3 exit criteria
+
+- [x] Part sales at a branch (optional customer); complete-at-checkout creates sale + invoice + optional payment
+- [x] Completing a sale deducts stock via ledger `Sale` entries; insufficient stock rejected
+- [x] Idempotent payments (`IdempotencyKey` unique per org); partial payments allowed
+- [x] Invoice is 1:1 auto projection of completed sale; unpaid/partial list available
+- [x] Returns restock via `SaleReturn` ledger and can record refund payments
+- [x] Void unpaid completed sales reverses stock
+- [x] `sales.read` / `sales.write` / `sales.refund` seeded (Owner/Admin/Cashier; Inventory staff read)
+- [x] Dashboard today’s sales total and unpaid invoice count are real
+- [x] Domain + API tests for stock reject, payment idempotency, return/restock, dashboard metrics
+- [x] Docs updated (`api`, `database`, `modules`, `architecture`, `business-rules`)
+
+**Do not start Phase 4 until Phase 3 is stable and the above checklist is met.**
+
 ## Increment workflow
 
 For every implementation task:

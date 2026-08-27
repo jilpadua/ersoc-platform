@@ -5,6 +5,7 @@ using Ersms.Domain.Identity;
 using Ersms.Domain.Inventory;
 using Ersms.Domain.Purchasing;
 using Ersms.Domain.Repairs;
+using Ersms.Domain.Sales;
 using Ersms.Domain.ServiceCatalog;
 using Microsoft.EntityFrameworkCore;
 
@@ -35,6 +36,13 @@ public interface IApplicationDbContext
     DbSet<Supplier> Suppliers { get; }
     DbSet<PurchaseOrder> PurchaseOrders { get; }
     DbSet<PurchaseOrderLine> PurchaseOrderLines { get; }
+    DbSet<PaymentMethod> PaymentMethods { get; }
+    DbSet<Sale> Sales { get; }
+    DbSet<SaleLine> SaleLines { get; }
+    DbSet<Invoice> Invoices { get; }
+    DbSet<Payment> Payments { get; }
+    DbSet<SaleReturn> SaleReturns { get; }
+    DbSet<SaleReturnLine> SaleReturnLines { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }
