@@ -57,4 +57,19 @@ public class RepairWorkflowTests
     {
         RepairWorkflow.GetAllowedNext("COMPLETED").Should().BeEmpty();
     }
+
+    [Fact]
+    public void GetAllowedNext_repairing_prefers_testing_before_waiting_for_parts()
+    {
+        var next = RepairWorkflow.GetAllowedNext("REPAIRING");
+        next.Should().ContainInOrder("TESTING", "WAITING_FOR_PARTS", "CANCELLED");
+        next[0].Should().Be("TESTING");
+    }
+
+    [Fact]
+    public void Allows_bidirectional_waiting_for_parts_and_repairing()
+    {
+        RepairWorkflow.CanTransition("WAITING_FOR_PARTS", "REPAIRING").IsSuccess.Should().BeTrue();
+        RepairWorkflow.CanTransition("REPAIRING", "WAITING_FOR_PARTS").IsSuccess.Should().BeTrue();
+    }
 }

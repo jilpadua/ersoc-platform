@@ -110,7 +110,8 @@ public static class DefaultRepairStatuses
 
 public static class RepairWorkflow
 {
-    private static readonly Dictionary<string, HashSet<string>> Allowed = new(StringComparer.OrdinalIgnoreCase)
+    /// <summary>Preferred next-status order (forward first; CANCELLED last). Used for CanTransition and API listing.</summary>
+    private static readonly Dictionary<string, string[]> Allowed = new(StringComparer.OrdinalIgnoreCase)
     {
         ["RECEIVED"] = ["DIAGNOSIS", "CANCELLED"],
         ["DIAGNOSIS"] = ["WAITING_FOR_APPROVAL", "APPROVED", "CANCELLED"],
@@ -129,7 +130,8 @@ public static class RepairWorkflow
         if (string.Equals(fromCode, toCode, StringComparison.OrdinalIgnoreCase))
             return Result.Failure(ErrorCodes.InvalidTransition, "Status is already set to that value.");
 
-        if (!Allowed.TryGetValue(fromCode, out var next) || !next.Contains(toCode))
+        if (!Allowed.TryGetValue(fromCode, out var next) ||
+            !next.Contains(toCode, StringComparer.OrdinalIgnoreCase))
             return Result.Failure(ErrorCodes.InvalidTransition, $"Cannot transition from {fromCode} to {toCode}.");
 
         return Result.Success();
@@ -139,7 +141,7 @@ public static class RepairWorkflow
     {
         if (!Allowed.TryGetValue(fromCode, out var next))
             return Array.Empty<string>();
-        return next.OrderBy(x => x).ToList();
+        return next;
     }
 }
 
