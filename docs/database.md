@@ -27,13 +27,32 @@ Audit: `AuditLogs` (append-only)
 
 Inventory: `Parts`, `StockLedgerEntries` (append-only quantity deltas)
 
-Purchasing: `Suppliers`, `PurchaseOrders`, `PurchaseOrderLines`
+Purchasing: `Suppliers`, `PurchaseOrders`, `PurchaseOrderLines`, `PurchaseReceives` (one row per receive API call; ledger `ReferenceId`)
+
+## Phase 3 tables
+
+Sales: `PaymentMethods`, `Sales`, `SaleLines` (includes `UnitCost` snapshot at sale), `Invoices`, `Payments`, `SaleReturns`, `SaleReturnLines`
+
+`Parts.UnitPrice` (sell price); `Parts.UnitCost` / `SaleLines.UnitCost` for COGS prep (see `accounting.md`).
+
+Financial timestamps: `Organizations.TimeZoneId`; `Sales.VoidedAt`; `Invoices.DueAt` / `VoidedAt`; `Payments.CreatedAt`; `SaleReturns.RefundedAt`.
+
+## Phase 3 hardening migration
+
+`Phase3HardeningAccountingPrep`: adds `SaleLines.UnitCost`, `PurchaseReceives` table.
+
+`FinancialTimestampsAndOrgTimezone`: org timezone + void/due/refund/payment created stamps.
 
 ## Critical constraints
 
 - Unique `(OrganizationId, RepairNumber)` on `Repairs`
 - Unique `(OrganizationId, PoNumber)` on `PurchaseOrders`
+- Unique `(OrganizationId, SaleNumber)` on `Sales`
+- Unique `(OrganizationId, InvoiceNumber)` on `Invoices`
+- Unique `SaleId` on `Invoices` (1:1 with sale)
+- Unique `(OrganizationId, IdempotencyKey)` on `Payments`
+- Unique `(OrganizationId, ReturnNumber)` on `SaleReturns`
 - Unique `(OrganizationId, Sku)` on `Parts`
-- Unique `(OrganizationId, Code)` on roles and repair status definitions
+- Unique `(OrganizationId, Code)` on roles, repair status definitions, and payment methods
 - Unique `(OrganizationId, NormalizedEmail)` on users
 - Indexes on customer phone/name, device serial/IMEI, stock ledger `(OrganizationId, BranchId, PartId)`, audit timestamp

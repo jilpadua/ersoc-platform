@@ -7,6 +7,7 @@ using Ersms.Domain.Identity;
 using Ersms.Domain.Audit;
 using Ersms.Domain.Inventory;
 using Ersms.Domain.Purchasing;
+using Ersms.Domain.Sales;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -49,6 +50,33 @@ public class ErsmsDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Gu
     public DbSet<Supplier> Suppliers => Set<Supplier>();
     public DbSet<PurchaseOrder> PurchaseOrders => Set<PurchaseOrder>();
     public DbSet<PurchaseOrderLine> PurchaseOrderLines => Set<PurchaseOrderLine>();
+    public DbSet<PurchaseReceive> PurchaseReceives => Set<PurchaseReceive>();
+    public DbSet<PaymentMethod> PaymentMethods => Set<PaymentMethod>();
+    public DbSet<Sale> Sales => Set<Sale>();
+    public DbSet<SaleLine> SaleLines => Set<SaleLine>();
+    public DbSet<Invoice> Invoices => Set<Invoice>();
+    public DbSet<Payment> Payments => Set<Payment>();
+    public DbSet<SaleReturn> SaleReturns => Set<SaleReturn>();
+    public DbSet<SaleReturnLine> SaleReturnLines => Set<SaleReturnLine>();
+
+    public Task<Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction> BeginTransactionAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (!Database.IsRelational())
+            return Task.FromResult<Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction>(new NoopDbContextTransaction());
+        return Database.BeginTransactionAsync(cancellationToken);
+    }
+
+    private sealed class NoopDbContextTransaction : Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction
+    {
+        public Guid TransactionId { get; } = Guid.NewGuid();
+        public void Commit() { }
+        public Task CommitAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public void Rollback() { }
+        public Task RollbackAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public void Dispose() { }
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -58,6 +86,7 @@ public class ErsmsDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Gu
         {
             e.HasKey(x => x.Id);
             e.Property(x => x.Name).HasMaxLength(200).IsRequired();
+            e.Property(x => x.TimeZoneId).HasMaxLength(64).IsRequired();
         });
 
         builder.Entity<Branch>(e =>
@@ -202,6 +231,7 @@ public class ErsmsDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Gu
             e.Property(x => x.Sku).HasMaxLength(64).IsRequired();
             e.Property(x => x.Name).HasMaxLength(200).IsRequired();
             e.Property(x => x.UnitCost).HasPrecision(18, 2);
+            e.Property(x => x.UnitPrice).HasPrecision(18, 2);
             e.Property(x => x.ReorderLevel).HasPrecision(18, 2);
         });
 
@@ -241,6 +271,87 @@ public class ErsmsDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Gu
             e.Property(x => x.QuantityReceived).HasPrecision(18, 2);
             e.Property(x => x.UnitCost).HasPrecision(18, 2);
             e.HasOne(x => x.PurchaseOrder).WithMany(x => x.Lines).HasForeignKey(x => x.PurchaseOrderId);
+        });
+
+        builder.Entity<PurchaseReceive>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.OrganizationId, x.PurchaseOrderId });
+            e.HasOne(x => x.PurchaseOrder).WithMany().HasForeignKey(x => x.PurchaseOrderId);
+        });
+
+        builder.Entity<PaymentMethod>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.OrganizationId, x.Code }).IsUnique();
+            e.Property(x => x.Code).HasMaxLength(32).IsRequired();
+            e.Property(x => x.Name).HasMaxLength(100).IsRequired();
+        });
+
+        builder.Entity<Sale>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.OrganizationId, x.SaleNumber }).IsUnique();
+            e.Property(x => x.SaleNumber).HasMaxLength(32).IsRequired();
+            e.Property(x => x.Status).HasMaxLength(32).IsRequired();
+            e.Property(x => x.Subtotal).HasPrecision(18, 2);
+            e.Property(x => x.DiscountTotal).HasPrecision(18, 2);
+            e.Property(x => x.TaxTotal).HasPrecision(18, 2);
+            e.Property(x => x.TotalAmount).HasPrecision(18, 2);
+            e.Property(x => x.AmountPaid).HasPrecision(18, 2);
+            e.Property(x => x.BalanceDue).HasPrecision(18, 2);
+        });
+
+        builder.Entity<SaleLine>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Description).HasMaxLength(300).IsRequired();
+            e.Property(x => x.Quantity).HasPrecision(18, 2);
+            e.Property(x => x.UnitPrice).HasPrecision(18, 2);
+            e.Property(x => x.UnitCost).HasPrecision(18, 2);
+            e.Property(x => x.Discount).HasPrecision(18, 2);
+            e.Property(x => x.LineTotal).HasPrecision(18, 2);
+            e.HasOne(x => x.Sale).WithMany(x => x.Lines).HasForeignKey(x => x.SaleId);
+        });
+
+        builder.Entity<Invoice>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.OrganizationId, x.InvoiceNumber }).IsUnique();
+            e.HasIndex(x => x.SaleId).IsUnique();
+            e.Property(x => x.InvoiceNumber).HasMaxLength(32).IsRequired();
+            e.Property(x => x.Status).HasMaxLength(32).IsRequired();
+            e.Property(x => x.TotalAmount).HasPrecision(18, 2);
+            e.Property(x => x.AmountPaid).HasPrecision(18, 2);
+            e.Property(x => x.BalanceDue).HasPrecision(18, 2);
+            e.HasOne(x => x.Sale).WithOne(x => x.Invoice).HasForeignKey<Invoice>(x => x.SaleId);
+        });
+
+        builder.Entity<Payment>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.OrganizationId, x.IdempotencyKey }).IsUnique();
+            e.Property(x => x.Amount).HasPrecision(18, 2);
+            e.Property(x => x.MethodCode).HasMaxLength(32).IsRequired();
+            e.Property(x => x.IdempotencyKey).HasMaxLength(128).IsRequired();
+            e.Property(x => x.Status).HasMaxLength(32).IsRequired();
+            e.HasOne(x => x.Sale).WithMany(x => x.Payments).HasForeignKey(x => x.SaleId);
+        });
+
+        builder.Entity<SaleReturn>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.OrganizationId, x.ReturnNumber }).IsUnique();
+            e.Property(x => x.ReturnNumber).HasMaxLength(32).IsRequired();
+            e.Property(x => x.RefundAmount).HasPrecision(18, 2);
+            e.HasOne(x => x.Sale).WithMany(x => x.Returns).HasForeignKey(x => x.SaleId);
+        });
+
+        builder.Entity<SaleReturnLine>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Quantity).HasPrecision(18, 2);
+            e.HasOne(x => x.SaleReturn).WithMany(x => x.Lines).HasForeignKey(x => x.SaleReturnId);
         });
 
         builder.Entity<ApplicationUser>(e =>

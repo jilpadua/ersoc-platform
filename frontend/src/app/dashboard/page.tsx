@@ -10,12 +10,12 @@ type Dashboard = {
   overdueRepairs: number;
   completedToday: number;
   lowStockParts: number;
+  todaySalesTotal: number;
+  unpaidInvoiceCount: number;
   technicianWorkload: { technicianUserId?: string | null; openRepairs: number }[];
   unavailable: {
-    sales: string;
     expenses: string;
     cashBalance: string;
-    unpaidInvoices: string;
   };
 };
 
@@ -70,8 +70,16 @@ export default function DashboardPage() {
           </div>
           <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <Metric label="Low stock parts" value={String(data.lowStockParts)} hint="On hand below reorder level" />
-            <Metric label="Sales" value="—" hint={data.unavailable.sales} />
-            <Metric label="Unpaid invoices" value="—" hint={data.unavailable.unpaidInvoices} />
+            <Metric
+              label="Sales"
+              value={`₱${data.todaySalesTotal.toLocaleString()}`}
+              hint="Completed sales today"
+            />
+            <Metric
+              label="Unpaid invoices"
+              value={String(data.unpaidInvoiceCount)}
+              hint="Balance due remaining"
+            />
             <Metric label="Expenses" value="—" hint={data.unavailable.expenses} />
             <Metric label="Cash balance" value="—" hint={data.unavailable.cashBalance} />
           </div>

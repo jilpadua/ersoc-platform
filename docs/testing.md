@@ -15,7 +15,13 @@ Covers repair transition rules and totals calculation.
 dotnet test tests/Ersms.Api.Tests
 ```
 
-Uses `WebApplicationFactory` + EF InMemory. Covers login, unauthorized access, repair create/status transition, invalid transition conflict, and audit presence.
+Uses `WebApplicationFactory` + EF InMemory. Covers:
+
+- Login, unauthorized access, repair create/status transition, invalid transition, audit
+- Inventory adjust, PO submit/partial receive, low-stock dashboard hooks
+- Sales: complete sale + stock ledger, payment idempotency, overpay reject, return/refund balances, void restock, pay-after-void reject, over-return, return-then-void reject, `voidedAt`/`refundedAt`/`issuedAt` stamps
+- Auth `me` includes `timeZoneId`
+- Purchase receive ledger `ReferenceType`/`ReferenceId` = distinct `PurchaseReceive` ids
 
 ## Manual smoke
 

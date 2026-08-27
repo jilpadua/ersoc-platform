@@ -386,10 +386,14 @@ public sealed class RepairService : IRepairService
             .Select(s => new { s.Id, s.Code, s.Name, s.SortOrder, s.IsTerminal, s.IsActive })
             .ToListAsync(ct);
         var byId = statusDefs.ToDictionary(s => s.Id);
-        var allowed = statusDefs
-            .Where(s => s.IsActive && allowedCodes.Contains(s.Code))
-            .OrderBy(s => s.SortOrder)
-            .Select(s => new RepairStatusDto(s.Id, s.Code, s.Name, s.SortOrder, s.IsTerminal))
+        var defsByCode = statusDefs.Where(s => s.IsActive).ToDictionary(s => s.Code, StringComparer.OrdinalIgnoreCase);
+        var allowed = allowedCodes
+            .Where(code => defsByCode.ContainsKey(code))
+            .Select(code =>
+            {
+                var s = defsByCode[code];
+                return new RepairStatusDto(s.Id, s.Code, s.Name, s.SortOrder, s.IsTerminal);
+            })
             .ToList();
 
         return new RepairDetailDto(

@@ -18,6 +18,7 @@ public sealed record MeResponse(
     string DisplayName,
     Guid OrganizationId,
     Guid? BranchId,
+    string TimeZoneId,
     IReadOnlyList<string> Roles,
     IReadOnlyList<string> Permissions);
 
@@ -87,12 +88,17 @@ public sealed class AuthController : ControllerBase
     private async Task<MeResponse> BuildMe(ApplicationUser user)
     {
         var claims = await _db.BuildUserClaimsAsync(user);
+        var timeZoneId = await _db.Organizations.AsNoTracking()
+            .Where(o => o.Id == user.OrganizationId)
+            .Select(o => o.TimeZoneId)
+            .FirstOrDefaultAsync() ?? "Asia/Manila";
         return new MeResponse(
             user.Id,
             user.Email ?? string.Empty,
             user.DisplayName,
             user.OrganizationId,
             user.BranchId,
+            string.IsNullOrWhiteSpace(timeZoneId) ? "Asia/Manila" : timeZoneId,
             claims.Where(c => c.Type == ClaimTypes.Role).Select(c => c.Value).ToList(),
             claims.Where(c => c.Type == "permission").Select(c => c.Value).ToList());
     }

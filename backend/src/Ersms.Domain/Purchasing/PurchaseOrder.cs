@@ -47,6 +47,17 @@ public class PurchaseOrderLine : Entity
     public PurchaseOrder? PurchaseOrder { get; set; }
 }
 
+/// <summary>Stable receive-batch header for accounting source idempotency (one per Receive API call).</summary>
+public class PurchaseReceive : Entity
+{
+    public Guid OrganizationId { get; set; }
+    public Guid PurchaseOrderId { get; set; }
+    public DateTimeOffset ReceivedAt { get; set; } = DateTimeOffset.UtcNow;
+    public Guid ReceivedByUserId { get; set; }
+
+    public PurchaseOrder? PurchaseOrder { get; set; }
+}
+
 public static class PurchaseOrderWorkflow
 {
     public static Result CanSubmit(string status) =>

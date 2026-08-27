@@ -2,7 +2,7 @@
 
 ## Current state
 
-Phase 0ù2 are implemented: modular ASP.NET Core API, Next.js admin UI, PostgreSQL, cookie auth with RBAC, customers, devices, service catalog, configurable repair workflow, **inventory ledger**, **suppliers/POs/receiving**, dashboard (including low-stock), audit, and search.
+Phase 0?3 are implemented: modular ASP.NET Core API, Next.js admin UI, PostgreSQL, cookie auth with RBAC, customers, devices, service catalog, configurable repair workflow, inventory ledger, suppliers/POs/receiving, **sales/POS** (payments, invoices, returns), dashboard (including low-stock, today?s sales, unpaid invoices), audit, and search.
 
 ## Source of truth
 
@@ -25,7 +25,7 @@ Persistence / External Services (PostgreSQL, local/S3 file storage)
 
 ### Style
 
-**Modular monolith** ù modules share one PostgreSQL database and one API host, with clear ownership boundaries and in-process domain events for cross-module automation. Microservices are out of scope unless a concrete requirement cannot be met inside the monolith.
+**Modular monolith** ? modules share one PostgreSQL database and one API host, with clear ownership boundaries and in-process domain events for cross-module automation. Microservices are out of scope unless a concrete requirement cannot be met inside the monolith.
 
 ## Technology stack
 
@@ -65,7 +65,7 @@ docs/
 docker-compose.yml          # PostgreSQL for local development
 ```
 
-## Module boundaries (Phase 1ù2)
+## Module boundaries (Phase 1-3)
 
 | Module | Owns | Depends on |
 |--------|------|------------|
@@ -76,10 +76,11 @@ docker-compose.yml          # PostgreSQL for local development
 | Repairs | Tickets, status definitions/history, services lines, notes, photos | Customers, Devices, ServiceCatalog, Identity |
 | Inventory | Parts, append-only stock ledger, adjustments | Identity (org/branch) |
 | Purchasing | Suppliers, purchase orders, receiving (posts inventory ledger) | Inventory, Identity |
+| Sales | Sales, sale lines, payments, invoices, returns (posts inventory ledger) | Inventory, Customers, Identity |
 | Audit | Append-only audit logs | All (via events/interceptors) |
-| Dashboard | Operational KPI read queries | Repairs, Inventory |
+| Dashboard | Operational KPI read queries | Repairs, Inventory, Sales |
 
-Later phases add Sales/POS, Accounting, Notifications, Reporting expansions, Employees extras, Settings expansions.
+Later phases add Accounting, Notifications, Reporting expansions, Employees extras, Settings expansions.
 
 ## Database strategy
 
@@ -88,7 +89,7 @@ Later phases add Sales/POS, Accounting, Notifications, Reporting expansions, Emp
 - Critical invariants enforced in the database (e.g. unique `(OrganizationId, RepairNumber)`).
 - Transactions for multi-step writes within a module.
 - Optimistic concurrency where high-conflict updates appear (later stock/accounting).
-- Inventory quantity and accounting balances will be **ledger-based** in Phases 2 and 4 ù not mutable totals alone.
+- Inventory quantity and accounting balances will be **ledger-based** in Phases 2 and 4 ? not mutable totals alone.
 
 ## API strategy
 
@@ -97,7 +98,7 @@ Later phases add Sales/POS, Accounting, Notifications, Reporting expansions, Emp
 - Stable application error codes in ProblemDetails extensions for the frontend.
 - Pagination, filtering, sorting, and search on list endpoints.
 - Organization (and branch where applicable) scope enforced **server-side**.
-- Idempotency keys for payment and other retry-sensitive operations starting Phase 3.
+- Idempotency keys for payment and other retry-sensitive operations (Phase 3+).
 
 ## Authentication and authorization
 

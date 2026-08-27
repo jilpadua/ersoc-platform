@@ -11,6 +11,7 @@ type Part = {
   name: string;
   description?: string;
   unitCost: number;
+  unitPrice: number;
   reorderLevel: number;
   quantityOnHand: number;
   isActive: boolean;
@@ -21,6 +22,7 @@ const emptyForm = {
   name: "",
   description: "",
   unitCost: "",
+  unitPrice: "",
   reorderLevel: "",
 };
 
@@ -53,6 +55,7 @@ export default function PartsPage() {
       name: p.name,
       description: p.description ?? "",
       unitCost: String(p.unitCost),
+      unitPrice: String(p.unitPrice),
       reorderLevel: String(p.reorderLevel),
     });
   }
@@ -71,6 +74,7 @@ export default function PartsPage() {
         name: form.name,
         description: form.description || null,
         unitCost: Number(form.unitCost || 0),
+        unitPrice: Number(form.unitPrice || 0),
         reorderLevel: Number(form.reorderLevel || 0),
       };
       if (editingId) {
@@ -151,6 +155,19 @@ export default function PartsPage() {
             min="0"
             value={form.unitCost}
             onChange={(e) => setForm({ ...form, unitCost: e.target.value })}
+            placeholder="0.00"
+            required
+            className={fieldClass + " w-full"}
+          />
+        </div>
+        <div>
+          <label className={labelClass}>Unit price</label>
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            value={form.unitPrice}
+            onChange={(e) => setForm({ ...form, unitPrice: e.target.value })}
             placeholder="0.00"
             required
             className={fieldClass + " w-full"}

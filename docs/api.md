@@ -28,7 +28,7 @@ On-hand quantity is **ledger-derived** (`SUM(StockLedgerEntries.QuantityDelta)` 
 |--------|------|-------|
 | POST | `/auth/login` | Rate-limited |
 | POST | `/auth/logout` | |
-| GET | `/auth/me` | |
+| GET | `/auth/me` | Includes `timeZoneId` (org IANA timezone) |
 | GET/POST | `/customers` | `includeInactive` on GET |
 | GET/PATCH | `/customers/{id}` | |
 | POST | `/customers/{id}/deactivate` | Soft deactivate |
@@ -43,7 +43,7 @@ On-hand quantity is **ledger-derived** (`SUM(StockLedgerEntries.QuantityDelta)` 
 | POST | `/services/{id}/deactivate` | |
 | POST | `/services/{id}/activate` | |
 | GET/POST | `/services/categories` | |
-| GET/POST | `/parts` | Stock on-hand included; `includeInactive` |
+| GET/POST | `/parts` | Includes `unitCost`, `unitPrice`, on-hand; `includeInactive` |
 | GET/PATCH | `/parts/{id}` | |
 | GET | `/parts/{id}/ledger` | Paged ledger history |
 | POST | `/parts/{id}/adjustments` | Append ledger row |
@@ -56,15 +56,27 @@ On-hand quantity is **ledger-derived** (`SUM(StockLedgerEntries.QuantityDelta)` 
 | GET/POST | `/purchase-orders` | Optional `status` filter |
 | GET/PATCH | `/purchase-orders/{id}` | PATCH draft only |
 | POST | `/purchase-orders/{id}/submit` | DRAFT → ORDERED |
-| POST | `/purchase-orders/{id}/receive` | Posts ledger receive rows |
+| POST | `/purchase-orders/{id}/receive` | Creates `PurchaseReceive`; ledger refs that id |
 | POST | `/purchase-orders/{id}/cancel` | DRAFT or ORDERED only |
+| GET/POST | `/sales` | Optional `status`, `unpaidOnly`; lines include `unitCost` |
+| GET | `/sales/{id}` | Lines, payments, invoice, returns |
+| POST | `/sales/{id}/payments` | Idempotent; `Idempotency-Key` header or body |
+| POST | `/sales/{id}/returns` | Restock + optional refund |
+| POST | `/sales/{id}/void` | Unpaid completed only; rejected if returns exist |
+| GET | `/invoices` | Optional `unpaidOnly` |
+| GET | `/invoices/{id}` | Read-only |
+| GET | `/payment-methods` | Seeded CASH/CARD/TRANSFER |
 | GET/POST | `/repairs` | |
 | GET | `/repairs/statuses` | |
 | GET | `/repairs/{id}` | Includes `allowedNextStatuses` |
 | PATCH | `/repairs/{id}/status` | Workflow-gated |
 | PATCH | `/repairs/{id}/technician` | |
 | POST | `/repairs/{id}/notes` | |
-| GET | `/dashboard` | Includes `lowStockParts` |
+| GET | `/dashboard` | Includes `lowStockParts`, `todaySalesTotal`, `unpaidInvoiceCount` |
 | GET | `/search?q=` | |
 | GET | `/audit-logs` | |
 | GET | `/health` | |
+
+## Sales (Phase 3)
+
+Creating a sale completes immediately: validates stock (transactional re-check), writes sale lines with `unitCost` snapshot, posts negative `Sale` ledger rows, creates a 1:1 invoice (`TaxTotal = 0`, `issuedAt`/`createdAt`), and optionally records the first payment in the same transaction. Payments require a unique org-scoped idempotency key; replays return the same sale state without double-posting. Responses expose business stamps (`issuedAt`, `paidAt`, `voidedAt`, `refundedAt`, `dueAt`) plus audit `createdAt`/`updatedAt`. Void is refused if the sale already has returns.

@@ -3,6 +3,7 @@ using System;
 using Ersms.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Ersms.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(ErsmsDbContext))]
-    partial class ErsmsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260827101245_AddSalesAndPos")]
+    partial class AddSalesAndPos
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -344,11 +347,6 @@ namespace Ersms.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<string>("TimeZoneId")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
                     b.Property<DateTimeOffset?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -564,33 +562,6 @@ namespace Ersms.Infrastructure.Persistence.Migrations
                     b.HasIndex("PurchaseOrderId");
 
                     b.ToTable("PurchaseOrderLines");
-                });
-
-            modelBuilder.Entity("Ersms.Domain.Purchasing.PurchaseReceive", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("OrganizationId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("PurchaseOrderId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTimeOffset>("ReceivedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("ReceivedByUserId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("PurchaseOrderId");
-
-                    b.HasIndex("OrganizationId", "PurchaseOrderId");
-
-                    b.ToTable("PurchaseReceives");
                 });
 
             modelBuilder.Entity("Ersms.Domain.Purchasing.Supplier", b =>
@@ -936,9 +907,6 @@ namespace Ersms.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<DateTimeOffset?>("DueAt")
-                        .HasColumnType("timestamp with time zone");
-
                     b.Property<string>("InvoiceNumber")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -965,9 +933,6 @@ namespace Ersms.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<DateTimeOffset?>("VoidedAt")
-                        .HasColumnType("timestamp with time zone");
-
                     b.HasKey("Id");
 
                     b.HasIndex("SaleId")
@@ -991,9 +956,6 @@ namespace Ersms.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("BranchId")
                         .HasColumnType("uuid");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("IdempotencyKey")
                         .IsRequired()
@@ -1132,9 +1094,6 @@ namespace Ersms.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<DateTimeOffset?>("VoidedAt")
-                        .HasColumnType("timestamp with time zone");
-
                     b.HasKey("Id");
 
                     b.HasIndex("OrganizationId", "SaleNumber")
@@ -1172,10 +1131,6 @@ namespace Ersms.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("SaleId")
                         .HasColumnType("uuid");
 
-                    b.Property<decimal>("UnitCost")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
-
                     b.Property<decimal>("UnitPrice")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
@@ -1211,9 +1166,6 @@ namespace Ersms.Infrastructure.Persistence.Migrations
                     b.Property<decimal>("RefundAmount")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
-
-                    b.Property<DateTimeOffset?>("RefundedAt")
-                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("ReturnNumber")
                         .IsRequired()
@@ -1630,17 +1582,6 @@ namespace Ersms.Infrastructure.Persistence.Migrations
                 {
                     b.HasOne("Ersms.Domain.Purchasing.PurchaseOrder", "PurchaseOrder")
                         .WithMany("Lines")
-                        .HasForeignKey("PurchaseOrderId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("PurchaseOrder");
-                });
-
-            modelBuilder.Entity("Ersms.Domain.Purchasing.PurchaseReceive", b =>
-                {
-                    b.HasOne("Ersms.Domain.Purchasing.PurchaseOrder", "PurchaseOrder")
-                        .WithMany()
                         .HasForeignKey("PurchaseOrderId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();

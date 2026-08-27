@@ -9,6 +9,7 @@ public class Part : AuditableEntity
     public string Name { get; set; } = string.Empty;
     public string? Description { get; set; }
     public decimal UnitCost { get; set; }
+    public decimal UnitPrice { get; set; }
     public decimal ReorderLevel { get; set; }
     public bool IsActive { get; set; } = true;
 }
@@ -17,6 +18,8 @@ public static class StockEntryTypes
 {
     public const string Adjustment = "Adjustment";
     public const string PurchaseReceive = "PurchaseReceive";
+    public const string Sale = "Sale";
+    public const string SaleReturn = "SaleReturn";
 }
 
 public class StockLedgerEntry : Entity
