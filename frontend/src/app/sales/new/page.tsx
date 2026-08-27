@@ -147,7 +147,7 @@ export default function NewSalePage() {
                 <label className={labelClass}>Quantity</label>
                 <input
                   type="number"
-                  step="1"
+                  step="0.01"
                   min="0.01"
                   value={line.quantity}
                   onChange={(e) => updateLine(index, { quantity: e.target.value })}
