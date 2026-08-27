@@ -29,11 +29,22 @@ Inventory: `Parts`, `StockLedgerEntries` (append-only quantity deltas)
 
 Purchasing: `Suppliers`, `PurchaseOrders`, `PurchaseOrderLines`
 
+## Phase 3 tables
+
+Sales: `PaymentMethods`, `Sales`, `SaleLines`, `Invoices`, `Payments`, `SaleReturns`, `SaleReturnLines`
+
+`Parts.UnitPrice` (sell price) added; `UnitCost` remains purchase/cost.
+
 ## Critical constraints
 
 - Unique `(OrganizationId, RepairNumber)` on `Repairs`
 - Unique `(OrganizationId, PoNumber)` on `PurchaseOrders`
+- Unique `(OrganizationId, SaleNumber)` on `Sales`
+- Unique `(OrganizationId, InvoiceNumber)` on `Invoices`
+- Unique `SaleId` on `Invoices` (1:1 with sale)
+- Unique `(OrganizationId, IdempotencyKey)` on `Payments`
+- Unique `(OrganizationId, ReturnNumber)` on `SaleReturns`
 - Unique `(OrganizationId, Sku)` on `Parts`
-- Unique `(OrganizationId, Code)` on roles and repair status definitions
+- Unique `(OrganizationId, Code)` on roles, repair status definitions, and payment methods
 - Unique `(OrganizationId, NormalizedEmail)` on users
 - Indexes on customer phone/name, device serial/IMEI, stock ledger `(OrganizationId, BranchId, PartId)`, audit timestamp

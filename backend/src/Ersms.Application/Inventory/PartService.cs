@@ -12,6 +12,7 @@ public sealed record PartDto(
     string Name,
     string? Description,
     decimal UnitCost,
+    decimal UnitPrice,
     decimal ReorderLevel,
     decimal QuantityOnHand,
     bool IsActive,
@@ -22,6 +23,7 @@ public sealed record CreatePartRequest(
     string Name,
     string? Description,
     decimal UnitCost,
+    decimal UnitPrice,
     decimal ReorderLevel,
     bool? IsActive = null);
 
@@ -45,6 +47,7 @@ public sealed class CreatePartValidator : AbstractValidator<CreatePartRequest>
         RuleFor(x => x.Sku).NotEmpty().MaximumLength(64);
         RuleFor(x => x.Name).NotEmpty().MaximumLength(200);
         RuleFor(x => x.UnitCost).GreaterThanOrEqualTo(0);
+        RuleFor(x => x.UnitPrice).GreaterThanOrEqualTo(0);
         RuleFor(x => x.ReorderLevel).GreaterThanOrEqualTo(0);
     }
 }
@@ -166,6 +169,7 @@ public sealed class PartService : IPartService
             Name = request.Name.Trim(),
             Description = request.Description?.Trim(),
             UnitCost = request.UnitCost,
+            UnitPrice = request.UnitPrice,
             ReorderLevel = request.ReorderLevel,
             IsActive = request.IsActive ?? true
         };
@@ -200,6 +204,7 @@ public sealed class PartService : IPartService
         entity.Name = request.Name.Trim();
         entity.Description = request.Description?.Trim();
         entity.UnitCost = request.UnitCost;
+        entity.UnitPrice = request.UnitPrice;
         entity.ReorderLevel = request.ReorderLevel;
         if (request.IsActive.HasValue) entity.IsActive = request.IsActive.Value;
         entity.UpdatedAt = DateTimeOffset.UtcNow;
@@ -314,5 +319,5 @@ public sealed class PartService : IPartService
     }
 
     private static PartDto ToDto(Part p, decimal qty) =>
-        new(p.Id, p.Sku, p.Name, p.Description, p.UnitCost, p.ReorderLevel, qty, p.IsActive, p.CreatedAt);
+        new(p.Id, p.Sku, p.Name, p.Description, p.UnitCost, p.UnitPrice, p.ReorderLevel, qty, p.IsActive, p.CreatedAt);
 }

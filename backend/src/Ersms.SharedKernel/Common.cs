@@ -108,6 +108,9 @@ public static class Permissions
     public const string InventoryWrite = "inventory.write";
     public const string PurchasingRead = "purchasing.read";
     public const string PurchasingWrite = "purchasing.write";
+    public const string SalesRead = "sales.read";
+    public const string SalesWrite = "sales.write";
+    public const string SalesRefund = "sales.refund";
 
     public static IReadOnlyList<string> All { get; } =
     [
@@ -116,7 +119,8 @@ public static class Permissions
         ServicesRead, ServicesWrite,
         RepairsRead, RepairsWrite, RepairsStatus,
         AuditRead, DashboardRead, SettingsManage, UsersManage,
-        InventoryRead, InventoryWrite, PurchasingRead, PurchasingWrite
+        InventoryRead, InventoryWrite, PurchasingRead, PurchasingWrite,
+        SalesRead, SalesWrite, SalesRefund
     ];
 }
 

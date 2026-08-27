@@ -24,6 +24,7 @@ public class InventoryPurchasingApiTests : IClassFixture<ApiFactory>
             sku = "SCR-001",
             name = "iPhone Screen",
             unitCost = 1500m,
+            unitPrice = 2200m,
             reorderLevel = 5m
         });
         partRes.EnsureSuccessStatusCode();
@@ -90,8 +91,10 @@ public class InventoryPurchasingApiTests : IClassFixture<ApiFactory>
         dashboard.EnsureSuccessStatusCode();
         var dash = await dashboard.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
         dash.GetProperty("lowStockParts").GetInt32().Should().BeGreaterThanOrEqualTo(0);
-        dash.TryGetProperty("unavailable", out var unavailable).Should().BeTrue();
-        unavailable.TryGetProperty("lowStock", out _).Should().BeFalse();
+        dash.TryGetProperty("todaySalesTotal", out _).Should().BeTrue();
+        dash.TryGetProperty("unpaidInvoiceCount", out _).Should().BeTrue();
+        dash.GetProperty("unavailable").TryGetProperty("expenses", out _).Should().BeTrue();
+        dash.GetProperty("unavailable").TryGetProperty("sales", out _).Should().BeFalse();
     }
 
     private async Task LoginAsync()

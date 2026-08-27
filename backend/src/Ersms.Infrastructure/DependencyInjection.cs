@@ -84,6 +84,7 @@ public static class DependencyInjection
             await db.Database.EnsureCreatedAsync();
 
         await EnsurePermissionsSyncedAsync(db, logger);
+        await EnsurePaymentMethodsSyncedAsync(db, logger);
 
         if (await db.Organizations.AnyAsync())
             return;
@@ -115,12 +116,14 @@ public static class DependencyInjection
                 Permissions.RepairsRead, Permissions.RepairsWrite, Permissions.RepairsStatus,
                 Permissions.DashboardRead, Permissions.AuditRead,
                 Permissions.InventoryRead, Permissions.InventoryWrite,
-                Permissions.PurchasingRead, Permissions.PurchasingWrite
+                Permissions.PurchasingRead, Permissions.PurchasingWrite,
+                Permissions.SalesRead, Permissions.SalesWrite, Permissions.SalesRefund
             ],
             [RoleCodes.Cashier] =
             [
                 Permissions.CustomersRead, Permissions.CustomersWrite,
-                Permissions.DevicesRead, Permissions.RepairsRead, Permissions.DashboardRead
+                Permissions.DevicesRead, Permissions.RepairsRead, Permissions.DashboardRead,
+                Permissions.SalesRead, Permissions.SalesWrite, Permissions.SalesRefund
             ],
             [RoleCodes.Technician] =
             [
@@ -132,7 +135,8 @@ public static class DependencyInjection
             [
                 Permissions.CustomersRead, Permissions.DevicesRead, Permissions.ServicesRead, Permissions.DashboardRead,
                 Permissions.InventoryRead, Permissions.InventoryWrite,
-                Permissions.PurchasingRead, Permissions.PurchasingWrite
+                Permissions.PurchasingRead, Permissions.PurchasingWrite,
+                Permissions.SalesRead
             ]
         };
 
@@ -170,6 +174,18 @@ public static class DependencyInjection
         }
 
         db.ServiceCategories.Add(new ServiceCategory { OrganizationId = org.Id, Name = "General" });
+
+        foreach (var (code, name) in new[] { ("CASH", "Cash"), ("CARD", "Card"), ("TRANSFER", "Bank transfer") })
+        {
+            db.PaymentMethods.Add(new Domain.Sales.PaymentMethod
+            {
+                OrganizationId = org.Id,
+                Code = code,
+                Name = name,
+                IsActive = true
+            });
+        }
+
         await db.SaveChangesAsync();
 
         var email = config["Seed:OwnerEmail"] ?? "owner@ersms.local";
@@ -228,14 +244,53 @@ public static class DependencyInjection
         await EnsureRolePerms(RoleCodes.AdminManager,
         [
             Permissions.InventoryRead, Permissions.InventoryWrite,
-            Permissions.PurchasingRead, Permissions.PurchasingWrite
+            Permissions.PurchasingRead, Permissions.PurchasingWrite,
+            Permissions.SalesRead, Permissions.SalesWrite, Permissions.SalesRefund
+        ]);
+        await EnsureRolePerms(RoleCodes.Cashier,
+        [
+            Permissions.SalesRead, Permissions.SalesWrite, Permissions.SalesRefund
         ]);
         await EnsureRolePerms(RoleCodes.InventoryStaff,
         [
             Permissions.InventoryRead, Permissions.InventoryWrite,
-            Permissions.PurchasingRead, Permissions.PurchasingWrite
+            Permissions.PurchasingRead, Permissions.PurchasingWrite,
+            Permissions.SalesRead
         ]);
         await db.SaveChangesAsync();
+    }
+
+    private static async Task EnsurePaymentMethodsSyncedAsync(ErsmsDbContext db, ILogger logger)
+    {
+        var orgs = await db.Organizations.Select(o => o.Id).ToListAsync();
+        var seeded = new (string Code, string Name)[]
+        {
+            ("CASH", "Cash"),
+            ("CARD", "Card"),
+            ("TRANSFER", "Bank transfer")
+        };
+        var added = 0;
+        foreach (var orgId in orgs)
+        {
+            var existing = await db.PaymentMethods.Where(m => m.OrganizationId == orgId).Select(m => m.Code).ToListAsync();
+            foreach (var (code, name) in seeded)
+            {
+                if (existing.Contains(code)) continue;
+                db.PaymentMethods.Add(new Domain.Sales.PaymentMethod
+                {
+                    OrganizationId = orgId,
+                    Code = code,
+                    Name = name,
+                    IsActive = true
+                });
+                added++;
+            }
+        }
+        if (added > 0)
+        {
+            await db.SaveChangesAsync();
+            logger.LogInformation("Seeded {Count} payment methods.", added);
+        }
     }
 
     public static async Task<IList<Claim>> BuildUserClaimsAsync(this ErsmsDbContext db, ApplicationUser user)
