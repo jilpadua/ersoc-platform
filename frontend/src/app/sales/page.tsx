@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
+import { useAuth } from "@/components/auth-provider";
 import { api, Paged } from "@/lib/api";
+import { formatOrgDateTime } from "@/lib/datetime";
 import { useEffect, useState } from "react";
 
 type SaleList = {
@@ -14,9 +16,13 @@ type SaleList = {
   amountPaid: number;
   balanceDue: number;
   completedAt?: string | null;
+  voidedAt?: string | null;
+  createdAt: string;
 };
 
 export default function SalesPage() {
+  const { user } = useAuth();
+  const tz = user?.timeZoneId;
   const [items, setItems] = useState<SaleList[]>([]);
   const [status, setStatus] = useState("");
   const [unpaidOnly, setUnpaidOnly] = useState(false);
@@ -86,6 +92,7 @@ export default function SalesPage() {
             <tr>
               <th className="px-4 py-3">Sale #</th>
               <th className="px-4 py-3">Customer</th>
+              <th className="px-4 py-3">Date & time</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3 text-right">Total</th>
               <th className="px-4 py-3 text-right">Paid</th>
@@ -101,6 +108,9 @@ export default function SalesPage() {
                   </Link>
                 </td>
                 <td className="px-4 py-3">{s.customerName ?? "—"}</td>
+                <td className="px-4 py-3 font-mono text-xs">
+                  {formatOrgDateTime(s.completedAt ?? s.createdAt, tz)}
+                </td>
                 <td className="px-4 py-3">{s.status}</td>
                 <td className="px-4 py-3 text-right font-mono">₱{s.totalAmount.toLocaleString()}</td>
                 <td className="px-4 py-3 text-right font-mono">₱{s.amountPaid.toLocaleString()}</td>
@@ -109,7 +119,7 @@ export default function SalesPage() {
             ))}
             {items.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
+                <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
                   No sales yet.
                 </td>
               </tr>
