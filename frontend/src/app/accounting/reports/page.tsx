@@ -90,7 +90,11 @@ export default function ReportsPage() {
           <label className={labelClass}>Report</label>
           <select
             value={kind}
-            onChange={(e) => setKind(e.target.value as ReportKind)}
+            onChange={(e) => {
+              setKind(e.target.value as ReportKind);
+              setData(null);
+              setError(null);
+            }}
             className={fieldClass}
           >
             {REPORTS.map((r) => (
