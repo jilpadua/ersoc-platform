@@ -7,11 +7,30 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Ersms.Application.Sales;
 
-public sealed record SaleLineDto(Guid Id, Guid PartId, string Description, decimal Quantity, decimal UnitPrice, decimal Discount, decimal LineTotal);
-public sealed record PaymentDto(Guid Id, decimal Amount, string MethodCode, DateTimeOffset PaidAt, string IdempotencyKey, string Status);
-public sealed record InvoiceDto(Guid Id, Guid SaleId, string InvoiceNumber, string Status, DateTimeOffset IssuedAt, decimal TotalAmount, decimal AmountPaid, decimal BalanceDue);
+public sealed record SaleLineDto(Guid Id, Guid PartId, string Description, decimal Quantity, decimal UnitPrice, decimal UnitCost, decimal Discount, decimal LineTotal);
+public sealed record PaymentDto(Guid Id, decimal Amount, string MethodCode, DateTimeOffset PaidAt, DateTimeOffset CreatedAt, string IdempotencyKey, string Status);
+public sealed record InvoiceDto(
+    Guid Id,
+    Guid SaleId,
+    string InvoiceNumber,
+    string Status,
+    DateTimeOffset IssuedAt,
+    DateTimeOffset? DueAt,
+    DateTimeOffset? VoidedAt,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? UpdatedAt,
+    decimal TotalAmount,
+    decimal AmountPaid,
+    decimal BalanceDue);
 public sealed record SaleReturnLineDto(Guid Id, Guid SaleLineId, Guid PartId, decimal Quantity);
-public sealed record SaleReturnDto(Guid Id, string ReturnNumber, DateTimeOffset CompletedAt, decimal RefundAmount, IReadOnlyList<SaleReturnLineDto> Lines);
+public sealed record SaleReturnDto(
+    Guid Id,
+    string ReturnNumber,
+    DateTimeOffset CompletedAt,
+    DateTimeOffset? RefundedAt,
+    decimal RefundAmount,
+    DateTimeOffset CreatedAt,
+    IReadOnlyList<SaleReturnLineDto> Lines);
 
 public sealed record SaleListDto(
     Guid Id,
@@ -22,7 +41,9 @@ public sealed record SaleListDto(
     decimal TotalAmount,
     decimal AmountPaid,
     decimal BalanceDue,
-    DateTimeOffset? CompletedAt);
+    DateTimeOffset? CompletedAt,
+    DateTimeOffset? VoidedAt,
+    DateTimeOffset CreatedAt);
 
 public sealed record SaleDetailDto(
     Guid Id,
@@ -38,6 +59,9 @@ public sealed record SaleDetailDto(
     decimal AmountPaid,
     decimal BalanceDue,
     DateTimeOffset? CompletedAt,
+    DateTimeOffset? VoidedAt,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? UpdatedAt,
     string? Notes,
     IReadOnlyList<SaleLineDto> Lines,
     IReadOnlyList<PaymentDto> Payments,
@@ -131,7 +155,8 @@ public sealed class SaleService : ISaleService
         var items = await q.Skip(query.Skip).Take(query.Take)
             .Select(x => new SaleListDto(
                 x.Sale.Id, x.Sale.SaleNumber, x.Sale.CustomerId, x.CustomerName, x.Sale.Status,
-                x.Sale.TotalAmount, x.Sale.AmountPaid, x.Sale.BalanceDue, x.Sale.CompletedAt))
+                x.Sale.TotalAmount, x.Sale.AmountPaid, x.Sale.BalanceDue, x.Sale.CompletedAt,
+                x.Sale.VoidedAt, x.Sale.CreatedAt))
             .ToListAsync(ct);
 
         return Result<PagedResult<SaleListDto>>.Success(new PagedResult<SaleListDto>
@@ -179,16 +204,6 @@ public sealed class SaleService : ISaleService
             return Result<SaleDetailDto>.Failure(ErrorCodes.Validation, "One or more parts are invalid.");
 
         var partMap = parts.ToDictionary(p => p.Id);
-        var onHand = await OnHandMapAsync(orgId, branchId.Value, partIds, ct);
-
-        foreach (var group in request.Lines.GroupBy(l => l.PartId))
-        {
-            var qty = group.Sum(l => l.Quantity);
-            var available = onHand.GetValueOrDefault(group.Key);
-            var check = StockMath.ApplyAdjustment(available, -qty);
-            if (!check.IsSuccess)
-                return Result<SaleDetailDto>.Failure(ErrorCodes.Conflict, $"Insufficient stock for {partMap[group.Key].Sku}.");
-        }
 
         if (request.Payment is not null)
         {
@@ -199,6 +214,11 @@ public sealed class SaleService : ISaleService
             var methodOk = await _db.PaymentMethods.AnyAsync(m =>
                 m.OrganizationId == orgId && m.IsActive && m.Code == request.Payment.MethodCode, ct);
             if (!methodOk) return Result<SaleDetailDto>.Failure(ErrorCodes.Validation, "Invalid payment method.");
+
+            var existingPay = await _db.Payments.AsNoTracking()
+                .FirstOrDefaultAsync(p => p.OrganizationId == orgId && p.IdempotencyKey == request.Payment.IdempotencyKey.Trim(), ct);
+            if (existingPay is not null)
+                return Result<SaleDetailDto>.Success((await LoadDetailAsync(existingPay.SaleId, ct))!);
         }
 
         var lines = new List<SaleLine>();
@@ -217,6 +237,7 @@ public sealed class SaleService : ISaleService
                 Description = $"{part.Sku} — {part.Name}",
                 Quantity = input.Quantity,
                 UnitPrice = unitPrice,
+                UnitCost = part.UnitCost,
                 Discount = input.Discount,
                 LineTotal = lineTotal
             });
@@ -225,66 +246,131 @@ public sealed class SaleService : ISaleService
         }
 
         var total = subtotal - discountTotal;
-        var sale = new Sale
-        {
-            OrganizationId = orgId,
-            BranchId = branchId.Value,
-            CustomerId = request.CustomerId,
-            SaleNumber = await NextNumberAsync("SALE-", orgId, ct),
-            Status = SaleStatuses.Completed,
-            Subtotal = subtotal,
-            DiscountTotal = discountTotal,
-            TaxTotal = 0,
-            TotalAmount = total,
-            AmountPaid = 0,
-            BalanceDue = total,
-            CompletedAt = DateTimeOffset.UtcNow,
-            Notes = request.Notes,
-            CreatedByUserId = _user.UserId!.Value,
-            Lines = lines
-        };
+        if (request.Payment is not null && request.Payment.Amount > total + 0.0001m)
+            return Result<SaleDetailDto>.Failure(ErrorCodes.Validation, "Payment exceeds balance due.");
 
-        foreach (var line in lines)
+        await using var tx = await _db.BeginTransactionAsync(ct);
+        try
         {
-            _db.StockLedgerEntries.Add(new StockLedgerEntry
+            var onHand = await OnHandMapAsync(orgId, branchId.Value, partIds, ct);
+            foreach (var group in request.Lines.GroupBy(l => l.PartId))
+            {
+                var qty = group.Sum(l => l.Quantity);
+                var available = onHand.GetValueOrDefault(group.Key);
+                var check = StockMath.ApplyAdjustment(available, -qty);
+                if (!check.IsSuccess)
+                {
+                    await tx.RollbackAsync(ct);
+                    return Result<SaleDetailDto>.Failure(ErrorCodes.Conflict, $"Insufficient stock for {partMap[group.Key].Sku}.");
+                }
+            }
+
+            var now = DateTimeOffset.UtcNow;
+            var sale = new Sale
             {
                 OrganizationId = orgId,
                 BranchId = branchId.Value,
-                PartId = line.PartId,
-                QuantityDelta = -line.Quantity,
-                EntryType = StockEntryTypes.Sale,
-                ReferenceType = "Sale",
-                ReferenceId = sale.Id,
-                Reason = $"Sold on {sale.SaleNumber}",
-                ActorUserId = _user.UserId!.Value
-            });
+                CustomerId = request.CustomerId,
+                SaleNumber = await NextNumberAsync("SALE-", orgId, ct),
+                Status = SaleStatuses.Completed,
+                Subtotal = subtotal,
+                DiscountTotal = discountTotal,
+                TaxTotal = 0,
+                TotalAmount = total,
+                AmountPaid = 0,
+                BalanceDue = total,
+                CompletedAt = now,
+                Notes = request.Notes,
+                CreatedByUserId = _user.UserId!.Value,
+                Lines = lines
+            };
+
+            foreach (var line in lines)
+            {
+                _db.StockLedgerEntries.Add(new StockLedgerEntry
+                {
+                    OrganizationId = orgId,
+                    BranchId = branchId.Value,
+                    PartId = line.PartId,
+                    QuantityDelta = -line.Quantity,
+                    EntryType = StockEntryTypes.Sale,
+                    ReferenceType = "Sale",
+                    ReferenceId = sale.Id,
+                    Reason = $"Sold on {sale.SaleNumber}",
+                    ActorUserId = _user.UserId!.Value
+                });
+            }
+
+            sale.Invoice = new Invoice
+            {
+                OrganizationId = orgId,
+                SaleId = sale.Id,
+                InvoiceNumber = await NextNumberAsync("INV-", orgId, ct),
+                Status = InvoiceStatuses.Unpaid,
+                IssuedAt = now,
+                DueAt = null,
+                TotalAmount = total,
+                AmountPaid = 0,
+                BalanceDue = total
+            };
+
+            _db.Sales.Add(sale);
+
+            if (request.Payment is not null)
+            {
+                if (request.Payment.Amount > total + 0.0001m)
+                {
+                    await tx.RollbackAsync(ct);
+                    return Result<SaleDetailDto>.Failure(ErrorCodes.Validation, "Payment exceeds balance due.");
+                }
+
+                _db.Payments.Add(new Payment
+                {
+                    OrganizationId = orgId,
+                    BranchId = branchId.Value,
+                    SaleId = sale.Id,
+                    Amount = request.Payment.Amount,
+                    MethodCode = request.Payment.MethodCode,
+                    PaidAt = now,
+                    CreatedAt = now,
+                    ReceivedByUserId = _user.UserId!.Value,
+                    IdempotencyKey = request.Payment.IdempotencyKey.Trim(),
+                    Status = PaymentStatuses.Succeeded
+                });
+                sale.AmountPaid = request.Payment.Amount;
+                sale.BalanceDue = Math.Max(0, total - request.Payment.Amount);
+                sale.Invoice.AmountPaid = sale.AmountPaid;
+                sale.Invoice.BalanceDue = sale.BalanceDue;
+                sale.Invoice.Status = SaleWorkflow.InvoiceStatusFromBalances(sale.TotalAmount, sale.AmountPaid);
+            }
+
+            try
+            {
+                await _db.SaveChangesAsync(ct);
+            }
+            catch (DbUpdateException) when (request.Payment is not null)
+            {
+                await tx.RollbackAsync(ct);
+                var existing = await _db.Payments.AsNoTracking()
+                    .FirstOrDefaultAsync(p => p.OrganizationId == orgId && p.IdempotencyKey == request.Payment.IdempotencyKey.Trim(), ct);
+                if (existing is not null && existing.SaleId != Guid.Empty)
+                {
+                    var detail = await LoadDetailAsync(existing.SaleId, ct);
+                    if (detail is not null)
+                        return Result<SaleDetailDto>.Success(detail);
+                }
+                return Result<SaleDetailDto>.Failure(ErrorCodes.Conflict, "Payment idempotency conflict.");
+            }
+
+            await tx.CommitAsync(ct);
+            await _audit.WriteAsync("create", "Sale", sale.Id.ToString(), null, new { sale.SaleNumber, sale.TotalAmount }, ct);
+            return Result<SaleDetailDto>.Success((await LoadDetailAsync(sale.Id, ct))!);
         }
-
-        sale.Invoice = new Invoice
+        catch
         {
-            OrganizationId = orgId,
-            SaleId = sale.Id,
-            InvoiceNumber = await NextNumberAsync("INV-", orgId, ct),
-            Status = InvoiceStatuses.Unpaid,
-            IssuedAt = DateTimeOffset.UtcNow,
-            TotalAmount = total,
-            AmountPaid = 0,
-            BalanceDue = total
-        };
-
-        _db.Sales.Add(sale);
-        await _db.SaveChangesAsync(ct);
-
-        if (request.Payment is not null)
-        {
-            var payResult = await ApplyPaymentAsync(sale, request.Payment.Amount, request.Payment.MethodCode, request.Payment.IdempotencyKey, ct);
-            if (!payResult.IsSuccess)
-                return Result<SaleDetailDto>.Failure(payResult.ErrorCode!, payResult.ErrorMessage!);
-            await _db.SaveChangesAsync(ct);
+            await tx.RollbackAsync(ct);
+            throw;
         }
-
-        await _audit.WriteAsync("create", "Sale", sale.Id.ToString(), null, new { sale.SaleNumber, sale.TotalAmount }, ct);
-        return Result<SaleDetailDto>.Success((await LoadDetailAsync(sale.Id, ct))!);
     }
 
     public async Task<Result<SaleDetailDto>> RecordPaymentAsync(Guid id, RecordPaymentRequest request, CancellationToken ct = default)
@@ -298,8 +384,9 @@ public sealed class SaleService : ISaleService
             return Result<SaleDetailDto>.Failure(ErrorCodes.Validation, "Payment amount must be positive.");
 
         var orgId = _user.OrganizationId!.Value;
+        var key = request.IdempotencyKey.Trim();
         var existing = await _db.Payments.AsNoTracking()
-            .FirstOrDefaultAsync(p => p.OrganizationId == orgId && p.IdempotencyKey == request.IdempotencyKey, ct);
+            .FirstOrDefaultAsync(p => p.OrganizationId == orgId && p.IdempotencyKey == key, ct);
         if (existing is not null)
         {
             if (existing.SaleId != id)
@@ -307,23 +394,90 @@ public sealed class SaleService : ISaleService
             return Result<SaleDetailDto>.Success((await LoadDetailAsync(id, ct))!);
         }
 
-        var sale = await _db.Sales.Include(s => s.Invoice)
-            .FirstOrDefaultAsync(s => s.Id == id && s.OrganizationId == orgId, ct);
-        if (sale is null) return Result<SaleDetailDto>.Failure(ErrorCodes.NotFound, "Sale not found.");
+        await using var tx = await _db.BeginTransactionAsync(ct);
+        try
+        {
+            var sale = await _db.Sales.Include(s => s.Invoice)
+                .FirstOrDefaultAsync(s => s.Id == id && s.OrganizationId == orgId, ct);
+            if (sale is null)
+            {
+                await tx.RollbackAsync(ct);
+                return Result<SaleDetailDto>.Failure(ErrorCodes.NotFound, "Sale not found.");
+            }
 
-        var can = SaleWorkflow.CanPay(sale.Status);
-        if (!can.IsSuccess) return Result<SaleDetailDto>.Failure(can.ErrorCode!, can.ErrorMessage!);
+            var can = SaleWorkflow.CanPay(sale.Status);
+            if (!can.IsSuccess)
+            {
+                await tx.RollbackAsync(ct);
+                return Result<SaleDetailDto>.Failure(can.ErrorCode!, can.ErrorMessage!);
+            }
 
-        var methodOk = await _db.PaymentMethods.AnyAsync(m =>
-            m.OrganizationId == orgId && m.IsActive && m.Code == request.MethodCode, ct);
-        if (!methodOk) return Result<SaleDetailDto>.Failure(ErrorCodes.Validation, "Invalid payment method.");
+            var amountPaid = await _db.Payments.Where(p => p.SaleId == sale.Id).SumAsync(p => (decimal?)p.Amount, ct) ?? 0m;
+            sale.AmountPaid = amountPaid;
+            sale.BalanceDue = Math.Max(0, sale.TotalAmount - amountPaid);
 
-        var apply = await ApplyPaymentAsync(sale, request.Amount, request.MethodCode, request.IdempotencyKey, ct);
-        if (!apply.IsSuccess) return Result<SaleDetailDto>.Failure(apply.ErrorCode!, apply.ErrorMessage!);
+            var methodOk = await _db.PaymentMethods.AnyAsync(m =>
+                m.OrganizationId == orgId && m.IsActive && m.Code == request.MethodCode, ct);
+            if (!methodOk)
+            {
+                await tx.RollbackAsync(ct);
+                return Result<SaleDetailDto>.Failure(ErrorCodes.Validation, "Invalid payment method.");
+            }
 
-        await _db.SaveChangesAsync(ct);
-        await _audit.WriteAsync("payment", "Sale", sale.Id.ToString(), null, new { request.Amount, request.MethodCode }, ct);
-        return Result<SaleDetailDto>.Success((await LoadDetailAsync(sale.Id, ct))!);
+            if (request.Amount > sale.BalanceDue + 0.0001m)
+            {
+                await tx.RollbackAsync(ct);
+                return Result<SaleDetailDto>.Failure(ErrorCodes.Validation, "Payment exceeds balance due.");
+            }
+
+            _db.Payments.Add(new Payment
+            {
+                OrganizationId = orgId,
+                BranchId = sale.BranchId,
+                SaleId = sale.Id,
+                Amount = request.Amount,
+                MethodCode = request.MethodCode,
+                PaidAt = DateTimeOffset.UtcNow,
+                CreatedAt = DateTimeOffset.UtcNow,
+                ReceivedByUserId = _user.UserId!.Value,
+                IdempotencyKey = key,
+                Status = PaymentStatuses.Succeeded
+            });
+
+            sale.AmountPaid = amountPaid + request.Amount;
+            sale.BalanceDue = Math.Max(0, sale.TotalAmount - sale.AmountPaid);
+            sale.UpdatedAt = DateTimeOffset.UtcNow;
+            if (sale.Invoice is not null)
+            {
+                sale.Invoice.AmountPaid = sale.AmountPaid;
+                sale.Invoice.BalanceDue = sale.BalanceDue;
+                sale.Invoice.Status = SaleWorkflow.InvoiceStatusFromBalances(sale.TotalAmount, sale.AmountPaid);
+                sale.Invoice.UpdatedAt = DateTimeOffset.UtcNow;
+            }
+
+            try
+            {
+                await _db.SaveChangesAsync(ct);
+            }
+            catch (DbUpdateException)
+            {
+                await tx.RollbackAsync(ct);
+                var raced = await _db.Payments.AsNoTracking()
+                    .FirstOrDefaultAsync(p => p.OrganizationId == orgId && p.IdempotencyKey == key, ct);
+                if (raced is not null && raced.SaleId == id)
+                    return Result<SaleDetailDto>.Success((await LoadDetailAsync(id, ct))!);
+                return Result<SaleDetailDto>.Failure(ErrorCodes.Conflict, "Payment idempotency conflict.");
+            }
+
+            await tx.CommitAsync(ct);
+            await _audit.WriteAsync("payment", "Sale", sale.Id.ToString(), null, new { request.Amount, request.MethodCode }, ct);
+            return Result<SaleDetailDto>.Success((await LoadDetailAsync(sale.Id, ct))!);
+        }
+        catch
+        {
+            await tx.RollbackAsync(ct);
+            throw;
+        }
     }
 
     public async Task<Result<SaleDetailDto>> CreateReturnAsync(Guid id, CreateReturnRequest request, CancellationToken ct = default)
@@ -350,18 +504,24 @@ public sealed class SaleService : ISaleService
             .GroupBy(l => l.SaleLineId)
             .ToDictionary(g => g.Key, g => g.Sum(x => x.Quantity));
 
+        var aggregated = request.Lines
+            .GroupBy(l => l.SaleLineId)
+            .Select(g => new { SaleLineId = g.Key, Quantity = g.Sum(x => x.Quantity) })
+            .ToList();
+
+        var returnNow = DateTimeOffset.UtcNow;
         var returnDoc = new SaleReturn
         {
             OrganizationId = orgId,
             BranchId = sale.BranchId,
             SaleId = sale.Id,
             ReturnNumber = await NextNumberAsync("RET-", orgId, ct),
-            CompletedAt = DateTimeOffset.UtcNow,
+            CompletedAt = returnNow,
             CreatedByUserId = _user.UserId!.Value
         };
 
         decimal refundCalc = 0;
-        foreach (var input in request.Lines)
+        foreach (var input in aggregated)
         {
             if (input.Quantity <= 0)
                 return Result<SaleDetailDto>.Failure(ErrorCodes.Validation, "Return quantity must be positive.");
@@ -394,6 +554,10 @@ public sealed class SaleService : ISaleService
             });
         }
 
+        var amountPaid = await _db.Payments.Where(p => p.SaleId == sale.Id).SumAsync(p => (decimal?)p.Amount, ct) ?? 0m;
+        sale.AmountPaid = amountPaid;
+        sale.BalanceDue = Math.Max(0, sale.TotalAmount - amountPaid);
+
         var refundAmount = request.RefundAmount ?? refundCalc;
         if (refundAmount < 0)
             return Result<SaleDetailDto>.Failure(ErrorCodes.Validation, "Refund amount cannot be negative.");
@@ -409,27 +573,36 @@ public sealed class SaleService : ISaleService
         if (refundAmount > 0)
         {
             var method = request.RefundMethodCode ?? "CASH";
-            var key = request.IdempotencyKey ?? $"refund-{returnDoc.Id}";
-            var existing = await _db.Payments.AnyAsync(p => p.OrganizationId == orgId && p.IdempotencyKey == key, ct);
-            if (!existing)
+            var key = (request.IdempotencyKey ?? $"refund-{returnDoc.Id}").Trim();
+            var existing = await _db.Payments.AsNoTracking()
+                .FirstOrDefaultAsync(p => p.OrganizationId == orgId && p.IdempotencyKey == key, ct);
+            if (existing is not null)
             {
-                _db.Payments.Add(new Payment
-                {
-                    OrganizationId = orgId,
-                    BranchId = sale.BranchId,
-                    SaleId = sale.Id,
-                    Amount = -refundAmount,
-                    MethodCode = method,
-                    PaidAt = DateTimeOffset.UtcNow,
-                    ReceivedByUserId = _user.UserId!.Value,
-                    IdempotencyKey = key,
-                    Status = PaymentStatuses.Refunded
-                });
-                sale.AmountPaid = Math.Max(0, sale.AmountPaid - refundAmount);
+                if (existing.SaleId != sale.Id)
+                    return Result<SaleDetailDto>.Failure(ErrorCodes.Conflict, "Idempotency key already used for another sale.");
+                return Result<SaleDetailDto>.Failure(ErrorCodes.Conflict, "Refund idempotency key already used.");
             }
+
+            _db.Payments.Add(new Payment
+            {
+                OrganizationId = orgId,
+                BranchId = sale.BranchId,
+                SaleId = sale.Id,
+                Amount = -refundAmount,
+                MethodCode = method,
+                PaidAt = returnNow,
+                CreatedAt = returnNow,
+                ReceivedByUserId = _user.UserId!.Value,
+                IdempotencyKey = key,
+                Status = PaymentStatuses.Refunded
+            });
+            returnDoc.RefundedAt = returnNow;
+            amountPaid -= refundAmount;
         }
 
-        sale.BalanceDue = Math.Max(0, sale.TotalAmount - sale.AmountPaid);
+        sale.AmountPaid = amountPaid;
+        sale.BalanceDue = Math.Max(0, sale.TotalAmount - amountPaid);
+        sale.UpdatedAt = DateTimeOffset.UtcNow;
         if (sale.Invoice is not null)
         {
             sale.Invoice.TotalAmount = sale.TotalAmount;
@@ -439,7 +612,6 @@ public sealed class SaleService : ISaleService
             sale.Invoice.UpdatedAt = DateTimeOffset.UtcNow;
         }
 
-        sale.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
 
         await _audit.WriteAsync("return", "Sale", sale.Id.ToString(), null, new { returnDoc.ReturnNumber, returnDoc.RefundAmount }, ct);
@@ -452,9 +624,15 @@ public sealed class SaleService : ISaleService
         if (!auth.IsSuccess) return Result<SaleDetailDto>.Failure(auth.ErrorCode!, auth.ErrorMessage!);
 
         var orgId = _user.OrganizationId!.Value;
-        var sale = await _db.Sales.Include(s => s.Lines).Include(s => s.Invoice)
+        var sale = await _db.Sales
+            .Include(s => s.Lines)
+            .Include(s => s.Invoice)
+            .Include(s => s.Returns)
             .FirstOrDefaultAsync(s => s.Id == id && s.OrganizationId == orgId, ct);
         if (sale is null) return Result<SaleDetailDto>.Failure(ErrorCodes.NotFound, "Sale not found.");
+
+        if (sale.Returns.Count > 0)
+            return Result<SaleDetailDto>.Failure(ErrorCodes.Conflict, "Cannot void a sale that has returns.");
 
         var can = SaleWorkflow.CanVoid(sale.Status, sale.AmountPaid);
         if (!can.IsSuccess) return Result<SaleDetailDto>.Failure(can.ErrorCode!, can.ErrorMessage!);
@@ -477,12 +655,14 @@ public sealed class SaleService : ISaleService
 
         sale.Status = SaleStatuses.Voided;
         sale.BalanceDue = 0;
-        sale.UpdatedAt = DateTimeOffset.UtcNow;
+        sale.VoidedAt = DateTimeOffset.UtcNow;
+        sale.UpdatedAt = sale.VoidedAt;
         if (sale.Invoice is not null)
         {
             sale.Invoice.Status = InvoiceStatuses.Voided;
             sale.Invoice.BalanceDue = 0;
-            sale.Invoice.UpdatedAt = DateTimeOffset.UtcNow;
+            sale.Invoice.VoidedAt = sale.VoidedAt;
+            sale.Invoice.UpdatedAt = sale.VoidedAt;
         }
 
         await _db.SaveChangesAsync(ct);
@@ -509,7 +689,9 @@ public sealed class SaleService : ISaleService
         q = q.OrderByDescending(i => i.IssuedAt);
         var total = await q.CountAsync(ct);
         var items = await q.Skip(query.Skip).Take(query.Take)
-            .Select(i => new InvoiceDto(i.Id, i.SaleId, i.InvoiceNumber, i.Status, i.IssuedAt, i.TotalAmount, i.AmountPaid, i.BalanceDue))
+            .Select(i => new InvoiceDto(
+                i.Id, i.SaleId, i.InvoiceNumber, i.Status, i.IssuedAt, i.DueAt, i.VoidedAt,
+                i.CreatedAt, i.UpdatedAt, i.TotalAmount, i.AmountPaid, i.BalanceDue))
             .ToListAsync(ct);
 
         return Result<PagedResult<InvoiceDto>>.Success(new PagedResult<InvoiceDto>
@@ -529,7 +711,9 @@ public sealed class SaleService : ISaleService
         var inv = await _db.Invoices.AsNoTracking()
             .FirstOrDefaultAsync(i => i.Id == id && i.OrganizationId == _user.OrganizationId, ct);
         if (inv is null) return Result<InvoiceDto>.Failure(ErrorCodes.NotFound, "Invoice not found.");
-        return Result<InvoiceDto>.Success(new InvoiceDto(inv.Id, inv.SaleId, inv.InvoiceNumber, inv.Status, inv.IssuedAt, inv.TotalAmount, inv.AmountPaid, inv.BalanceDue));
+        return Result<InvoiceDto>.Success(new InvoiceDto(
+            inv.Id, inv.SaleId, inv.InvoiceNumber, inv.Status, inv.IssuedAt, inv.DueAt, inv.VoidedAt,
+            inv.CreatedAt, inv.UpdatedAt, inv.TotalAmount, inv.AmountPaid, inv.BalanceDue));
     }
 
     public async Task<Result<IReadOnlyList<PaymentMethodDto>>> ListPaymentMethodsAsync(CancellationToken ct = default)
@@ -543,42 +727,6 @@ public sealed class SaleService : ISaleService
             .Select(m => new PaymentMethodDto(m.Id, m.Code, m.Name))
             .ToListAsync(ct);
         return Result<IReadOnlyList<PaymentMethodDto>>.Success(items);
-    }
-
-    private async Task<Result> ApplyPaymentAsync(Sale sale, decimal amount, string methodCode, string idempotencyKey, CancellationToken ct)
-    {
-        var orgId = sale.OrganizationId;
-        var existing = await _db.Payments.FirstOrDefaultAsync(p => p.OrganizationId == orgId && p.IdempotencyKey == idempotencyKey, ct);
-        if (existing is not null)
-            return existing.SaleId == sale.Id ? Result.Success() : Result.Failure(ErrorCodes.Conflict, "Idempotency key already used.");
-
-        if (amount > sale.BalanceDue + 0.0001m)
-            return Result.Failure(ErrorCodes.Validation, "Payment exceeds balance due.");
-
-        _db.Payments.Add(new Payment
-        {
-            OrganizationId = orgId,
-            BranchId = sale.BranchId,
-            SaleId = sale.Id,
-            Amount = amount,
-            MethodCode = methodCode,
-            PaidAt = DateTimeOffset.UtcNow,
-            ReceivedByUserId = _user.UserId!.Value,
-            IdempotencyKey = idempotencyKey.Trim(),
-            Status = PaymentStatuses.Succeeded
-        });
-
-        sale.AmountPaid += amount;
-        sale.BalanceDue = Math.Max(0, sale.TotalAmount - sale.AmountPaid);
-        sale.UpdatedAt = DateTimeOffset.UtcNow;
-        if (sale.Invoice is not null)
-        {
-            sale.Invoice.AmountPaid = sale.AmountPaid;
-            sale.Invoice.BalanceDue = sale.BalanceDue;
-            sale.Invoice.Status = SaleWorkflow.InvoiceStatusFromBalances(sale.TotalAmount, sale.AmountPaid);
-            sale.Invoice.UpdatedAt = DateTimeOffset.UtcNow;
-        }
-        return Result.Success();
     }
 
     private async Task<string> NextNumberAsync(string prefix, Guid orgId, CancellationToken ct)
@@ -644,12 +792,19 @@ public sealed class SaleService : ISaleService
             sale.AmountPaid,
             sale.BalanceDue,
             sale.CompletedAt,
+            sale.VoidedAt,
+            sale.CreatedAt,
+            sale.UpdatedAt,
             sale.Notes,
-            sale.Lines.Select(l => new SaleLineDto(l.Id, l.PartId, l.Description, l.Quantity, l.UnitPrice, l.Discount, l.LineTotal)).ToList(),
-            sale.Payments.OrderBy(p => p.PaidAt).Select(p => new PaymentDto(p.Id, p.Amount, p.MethodCode, p.PaidAt, p.IdempotencyKey, p.Status)).ToList(),
-            sale.Invoice is null ? null : new InvoiceDto(sale.Invoice.Id, sale.Invoice.SaleId, sale.Invoice.InvoiceNumber, sale.Invoice.Status, sale.Invoice.IssuedAt, sale.Invoice.TotalAmount, sale.Invoice.AmountPaid, sale.Invoice.BalanceDue),
+            sale.Lines.Select(l => new SaleLineDto(l.Id, l.PartId, l.Description, l.Quantity, l.UnitPrice, l.UnitCost, l.Discount, l.LineTotal)).ToList(),
+            sale.Payments.OrderBy(p => p.PaidAt).Select(p => new PaymentDto(p.Id, p.Amount, p.MethodCode, p.PaidAt, p.CreatedAt, p.IdempotencyKey, p.Status)).ToList(),
+            sale.Invoice is null ? null : new InvoiceDto(
+                sale.Invoice.Id, sale.Invoice.SaleId, sale.Invoice.InvoiceNumber, sale.Invoice.Status,
+                sale.Invoice.IssuedAt, sale.Invoice.DueAt, sale.Invoice.VoidedAt,
+                sale.Invoice.CreatedAt, sale.Invoice.UpdatedAt,
+                sale.Invoice.TotalAmount, sale.Invoice.AmountPaid, sale.Invoice.BalanceDue),
             sale.Returns.OrderByDescending(r => r.CompletedAt).Select(r => new SaleReturnDto(
-                r.Id, r.ReturnNumber, r.CompletedAt, r.RefundAmount,
+                r.Id, r.ReturnNumber, r.CompletedAt, r.RefundedAt, r.RefundAmount, r.CreatedAt,
                 r.Lines.Select(l => new SaleReturnLineDto(l.Id, l.SaleLineId, l.PartId, l.Quantity)).ToList())).ToList());
     }
 }

@@ -44,6 +44,7 @@ public class Sale : AuditableEntity
     public decimal AmountPaid { get; set; }
     public decimal BalanceDue { get; set; }
     public DateTimeOffset? CompletedAt { get; set; }
+    public DateTimeOffset? VoidedAt { get; set; }
     public string? Notes { get; set; }
     public Guid CreatedByUserId { get; set; }
 
@@ -60,6 +61,8 @@ public class SaleLine : Entity
     public string Description { get; set; } = string.Empty;
     public decimal Quantity { get; set; }
     public decimal UnitPrice { get; set; }
+    /// <summary>Part unit cost snapshotted at sale completion for COGS.</summary>
+    public decimal UnitCost { get; set; }
     public decimal Discount { get; set; }
     public decimal LineTotal { get; set; }
 
@@ -73,6 +76,8 @@ public class Invoice : AuditableEntity
     public string InvoiceNumber { get; set; } = string.Empty;
     public string Status { get; set; } = InvoiceStatuses.Unpaid;
     public DateTimeOffset IssuedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? DueAt { get; set; }
+    public DateTimeOffset? VoidedAt { get; set; }
     public decimal TotalAmount { get; set; }
     public decimal AmountPaid { get; set; }
     public decimal BalanceDue { get; set; }
@@ -88,6 +93,7 @@ public class Payment : Entity
     public decimal Amount { get; set; }
     public string MethodCode { get; set; } = string.Empty;
     public DateTimeOffset PaidAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public Guid ReceivedByUserId { get; set; }
     public string IdempotencyKey { get; set; } = string.Empty;
     public string Status { get; set; } = PaymentStatuses.Succeeded;
@@ -102,6 +108,7 @@ public class SaleReturn : AuditableEntity
     public Guid SaleId { get; set; }
     public string ReturnNumber { get; set; } = string.Empty;
     public DateTimeOffset CompletedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? RefundedAt { get; set; }
     public decimal RefundAmount { get; set; }
     public Guid CreatedByUserId { get; set; }
 

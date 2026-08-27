@@ -3,6 +3,7 @@ using System;
 using Ersms.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Ersms.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(ErsmsDbContext))]
-    partial class ErsmsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260827141849_Phase3HardeningAccountingPrep")]
+    partial class Phase3HardeningAccountingPrep
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -343,11 +346,6 @@ namespace Ersms.Infrastructure.Persistence.Migrations
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasColumnType("text");
-
-                    b.Property<string>("TimeZoneId")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -936,9 +934,6 @@ namespace Ersms.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<DateTimeOffset?>("DueAt")
-                        .HasColumnType("timestamp with time zone");
-
                     b.Property<string>("InvoiceNumber")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -965,9 +960,6 @@ namespace Ersms.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<DateTimeOffset?>("VoidedAt")
-                        .HasColumnType("timestamp with time zone");
-
                     b.HasKey("Id");
 
                     b.HasIndex("SaleId")
@@ -991,9 +983,6 @@ namespace Ersms.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("BranchId")
                         .HasColumnType("uuid");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("IdempotencyKey")
                         .IsRequired()
@@ -1132,9 +1121,6 @@ namespace Ersms.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<DateTimeOffset?>("VoidedAt")
-                        .HasColumnType("timestamp with time zone");
-
                     b.HasKey("Id");
 
                     b.HasIndex("OrganizationId", "SaleNumber")
@@ -1211,9 +1197,6 @@ namespace Ersms.Infrastructure.Persistence.Migrations
                     b.Property<decimal>("RefundAmount")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
-
-                    b.Property<DateTimeOffset?>("RefundedAt")
-                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("ReturnNumber")
                         .IsRequired()

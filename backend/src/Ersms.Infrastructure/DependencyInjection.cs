@@ -85,13 +85,18 @@ public static class DependencyInjection
 
         await EnsurePermissionsSyncedAsync(db, logger);
         await EnsurePaymentMethodsSyncedAsync(db, logger);
+        await EnsureOrganizationTimeZonesSyncedAsync(db, logger);
 
         if (await db.Organizations.AnyAsync())
             return;
 
         logger.LogInformation("Seeding initial organization, roles, and owner user...");
 
-        var org = new Organization { Name = config["Seed:OrganizationName"] ?? "Demo Repair Shop" };
+        var org = new Organization
+        {
+            Name = config["Seed:OrganizationName"] ?? "Demo Repair Shop",
+            TimeZoneId = config["Seed:TimeZoneId"] ?? "Asia/Manila"
+        };
         db.Organizations.Add(org);
         await db.SaveChangesAsync();
 
@@ -291,6 +296,18 @@ public static class DependencyInjection
             await db.SaveChangesAsync();
             logger.LogInformation("Seeded {Count} payment methods.", added);
         }
+    }
+
+    private static async Task EnsureOrganizationTimeZonesSyncedAsync(ErsmsDbContext db, ILogger logger)
+    {
+        var missing = await db.Organizations
+            .Where(o => string.IsNullOrWhiteSpace(o.TimeZoneId))
+            .ToListAsync();
+        if (missing.Count == 0) return;
+        foreach (var org in missing)
+            org.TimeZoneId = "Asia/Manila";
+        await db.SaveChangesAsync();
+        logger.LogInformation("Backfilled TimeZoneId on {Count} organizations.", missing.Count);
     }
 
     public static async Task<IList<Claim>> BuildUserClaimsAsync(this ErsmsDbContext db, ApplicationUser user)

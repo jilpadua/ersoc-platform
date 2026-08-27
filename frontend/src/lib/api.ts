@@ -72,6 +72,7 @@ export type Me = {
   displayName: string;
   organizationId: string;
   branchId?: string | null;
+  timeZoneId: string;
   roles: string[];
   permissions: string[];
 };

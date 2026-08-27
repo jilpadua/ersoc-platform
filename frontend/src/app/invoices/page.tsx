@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
+import { useAuth } from "@/components/auth-provider";
 import { api, Paged } from "@/lib/api";
+import { formatOrgDateTime } from "@/lib/datetime";
 import { useEffect, useState } from "react";
 
 type Invoice = {
@@ -11,12 +13,18 @@ type Invoice = {
   invoiceNumber: string;
   status: string;
   issuedAt: string;
+  dueAt?: string | null;
+  voidedAt?: string | null;
+  createdAt: string;
+  updatedAt?: string | null;
   totalAmount: number;
   amountPaid: number;
   balanceDue: number;
 };
 
 export default function InvoicesPage() {
+  const { user } = useAuth();
+  const tz = user?.timeZoneId;
   const [items, setItems] = useState<Invoice[]>([]);
   const [unpaidOnly, setUnpaidOnly] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -56,6 +64,7 @@ export default function InvoicesPage() {
             <tr>
               <th className="px-4 py-3">Invoice #</th>
               <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3">Issued</th>
               <th className="px-4 py-3 text-right">Total</th>
               <th className="px-4 py-3 text-right">Paid</th>
               <th className="px-4 py-3 text-right">Balance</th>
@@ -67,6 +76,9 @@ export default function InvoicesPage() {
               <tr key={i.id} className="border-b border-slate-100">
                 <td className="px-4 py-3 font-medium">{i.invoiceNumber}</td>
                 <td className="px-4 py-3">{i.status}</td>
+                <td className="px-4 py-3 font-mono text-xs">
+                  {formatOrgDateTime(i.issuedAt, tz)}
+                </td>
                 <td className="px-4 py-3 text-right font-mono">₱{i.totalAmount.toLocaleString()}</td>
                 <td className="px-4 py-3 text-right font-mono">₱{i.amountPaid.toLocaleString()}</td>
                 <td className="px-4 py-3 text-right font-mono">₱{i.balanceDue.toLocaleString()}</td>
@@ -79,7 +91,7 @@ export default function InvoicesPage() {
             ))}
             {items.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
+                <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
                   No invoices match.
                 </td>
               </tr>

@@ -50,6 +50,7 @@ public class ErsmsDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Gu
     public DbSet<Supplier> Suppliers => Set<Supplier>();
     public DbSet<PurchaseOrder> PurchaseOrders => Set<PurchaseOrder>();
     public DbSet<PurchaseOrderLine> PurchaseOrderLines => Set<PurchaseOrderLine>();
+    public DbSet<PurchaseReceive> PurchaseReceives => Set<PurchaseReceive>();
     public DbSet<PaymentMethod> PaymentMethods => Set<PaymentMethod>();
     public DbSet<Sale> Sales => Set<Sale>();
     public DbSet<SaleLine> SaleLines => Set<SaleLine>();
@@ -57,6 +58,25 @@ public class ErsmsDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Gu
     public DbSet<Payment> Payments => Set<Payment>();
     public DbSet<SaleReturn> SaleReturns => Set<SaleReturn>();
     public DbSet<SaleReturnLine> SaleReturnLines => Set<SaleReturnLine>();
+
+    public Task<Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction> BeginTransactionAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (!Database.IsRelational())
+            return Task.FromResult<Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction>(new NoopDbContextTransaction());
+        return Database.BeginTransactionAsync(cancellationToken);
+    }
+
+    private sealed class NoopDbContextTransaction : Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction
+    {
+        public Guid TransactionId { get; } = Guid.NewGuid();
+        public void Commit() { }
+        public Task CommitAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public void Rollback() { }
+        public Task RollbackAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public void Dispose() { }
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -66,6 +86,7 @@ public class ErsmsDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Gu
         {
             e.HasKey(x => x.Id);
             e.Property(x => x.Name).HasMaxLength(200).IsRequired();
+            e.Property(x => x.TimeZoneId).HasMaxLength(64).IsRequired();
         });
 
         builder.Entity<Branch>(e =>
@@ -252,6 +273,13 @@ public class ErsmsDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Gu
             e.HasOne(x => x.PurchaseOrder).WithMany(x => x.Lines).HasForeignKey(x => x.PurchaseOrderId);
         });
 
+        builder.Entity<PurchaseReceive>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.OrganizationId, x.PurchaseOrderId });
+            e.HasOne(x => x.PurchaseOrder).WithMany().HasForeignKey(x => x.PurchaseOrderId);
+        });
+
         builder.Entity<PaymentMethod>(e =>
         {
             e.HasKey(x => x.Id);
@@ -280,6 +308,7 @@ public class ErsmsDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Gu
             e.Property(x => x.Description).HasMaxLength(300).IsRequired();
             e.Property(x => x.Quantity).HasPrecision(18, 2);
             e.Property(x => x.UnitPrice).HasPrecision(18, 2);
+            e.Property(x => x.UnitCost).HasPrecision(18, 2);
             e.Property(x => x.Discount).HasPrecision(18, 2);
             e.Property(x => x.LineTotal).HasPrecision(18, 2);
             e.HasOne(x => x.Sale).WithMany(x => x.Lines).HasForeignKey(x => x.SaleId);

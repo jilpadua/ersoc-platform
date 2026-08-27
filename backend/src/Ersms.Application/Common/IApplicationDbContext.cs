@@ -8,6 +8,7 @@ using Ersms.Domain.Repairs;
 using Ersms.Domain.Sales;
 using Ersms.Domain.ServiceCatalog;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace Ersms.Application.Common;
 
@@ -36,6 +37,7 @@ public interface IApplicationDbContext
     DbSet<Supplier> Suppliers { get; }
     DbSet<PurchaseOrder> PurchaseOrders { get; }
     DbSet<PurchaseOrderLine> PurchaseOrderLines { get; }
+    DbSet<PurchaseReceive> PurchaseReceives { get; }
     DbSet<PaymentMethod> PaymentMethods { get; }
     DbSet<Sale> Sales { get; }
     DbSet<SaleLine> SaleLines { get; }
@@ -45,4 +47,5 @@ public interface IApplicationDbContext
     DbSet<SaleReturnLine> SaleReturnLines { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
+    Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default);
 }

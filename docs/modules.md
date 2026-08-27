@@ -8,8 +8,8 @@
 | ServiceCatalog | Domain/ServiceCatalog, Application/ServiceCatalog | Categories and billable services |
 | Repairs | Domain/Repairs, Application/Repairs | Tickets, workflow, notes, service lines |
 | Inventory | Domain/Inventory, Application/Inventory | Parts catalog, stock ledger, adjustments |
-| Purchasing | Domain/Purchasing, Application/Purchasing | Suppliers, purchase orders, receiving |
-| Sales | Domain/Sales, Application/Sales | POS sales, payments, invoices, returns |
+| Purchasing | Domain/Purchasing, Application/Purchasing | Suppliers, purchase orders, receive batches (`PurchaseReceive`), receiving |
+| Sales | Domain/Sales, Application/Sales | POS sales, payments, invoices, returns (void XOR return) |
 | Audit | Domain/Audit, Application/Audit | Append-only audit query |
 | Dashboard | Application/Dashboard | Operational KPIs |
 | Search | Application/Search | Global search |
