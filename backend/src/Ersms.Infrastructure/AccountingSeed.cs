@@ -10,31 +10,37 @@ public static class AccountingSeed
     public static async Task EnsureForAllOrganizationsAsync(ErsmsDbContext db, ILogger logger)
     {
         var orgIds = await db.Organizations.Select(o => o.Id).ToListAsync();
-        var addedAccounts = 0;
-        var addedPeriods = 0;
+        var totals = (Accounts: 0, Periods: 0, Mappings: 0, Categories: 0);
         foreach (var orgId in orgIds)
         {
             var r = await EnsureForOrganizationAsync(db, orgId);
-            addedAccounts += r.Accounts;
-            addedPeriods += r.Periods;
+            totals.Accounts += r.Accounts;
+            totals.Periods += r.Periods;
+            totals.Mappings += r.Mappings;
+            totals.Categories += r.Categories;
         }
-        if (addedAccounts + addedPeriods > 0)
-        {
+
+        if (db.ChangeTracker.HasChanges())
             await db.SaveChangesAsync();
-            logger.LogInformation("Accounting seed: {Accounts} accounts, {Periods} periods.", addedAccounts, addedPeriods);
+
+        if (totals.Accounts + totals.Periods + totals.Mappings + totals.Categories > 0)
+        {
+            logger.LogInformation(
+                "Accounting seed: {Accounts} accounts, {Periods} periods, {Mappings} mappings, {Categories} categories.",
+                totals.Accounts, totals.Periods, totals.Mappings, totals.Categories);
         }
     }
 
-    public static async Task<(int Accounts, int Periods)> EnsureForOrganizationAsync(ErsmsDbContext db, Guid orgId)
+    public static async Task<(int Accounts, int Periods, int Mappings, int Categories)> EnsureForOrganizationAsync(
+        ErsmsDbContext db, Guid orgId)
     {
         var existingCodes = await db.Accounts.Where(a => a.OrganizationId == orgId).Select(a => a.Code).ToListAsync();
-        var accountByCode = await db.Accounts.Where(a => a.OrganizationId == orgId).ToDictionaryAsync(a => a.Code);
         var accountsAdded = 0;
 
         foreach (var (code, name, type, normal, _) in DefaultChartOfAccounts.Accounts)
         {
             if (existingCodes.Contains(code)) continue;
-            var account = new Account
+            db.Accounts.Add(new Account
             {
                 OrganizationId = orgId,
                 Code = code,
@@ -43,35 +49,47 @@ public static class AccountingSeed
                 NormalBalance = normal,
                 IsSystem = true,
                 IsActive = true
-            };
-            db.Accounts.Add(account);
-            accountByCode[code] = account;
+            });
             accountsAdded++;
         }
 
         if (accountsAdded > 0)
             await db.SaveChangesAsync();
 
-        accountByCode = await db.Accounts.Where(a => a.OrganizationId == orgId).ToDictionaryAsync(a => a.Code);
-
-        var existingKeys = await db.AccountingAccountMappings
+        var accountByCode = await db.Accounts.Where(a => a.OrganizationId == orgId).ToDictionaryAsync(a => a.Code);
+        var existingMaps = await db.AccountingAccountMappings
             .Where(m => m.OrganizationId == orgId)
-            .Select(m => m.MappingKey)
             .ToListAsync();
+        var mapsByKey = existingMaps.ToDictionary(m => m.MappingKey, StringComparer.OrdinalIgnoreCase);
 
+        var mappingsChanged = 0;
         foreach (var (code, _, _, _, mappingKey) in DefaultChartOfAccounts.Accounts)
         {
             if (mappingKey is null) continue;
-            if (existingKeys.Contains(mappingKey)) continue;
             if (!accountByCode.TryGetValue(code, out var account)) continue;
-            db.AccountingAccountMappings.Add(new AccountingAccountMapping
+
+            if (!mapsByKey.TryGetValue(mappingKey, out var mapping))
             {
-                OrganizationId = orgId,
-                MappingKey = mappingKey,
-                AccountId = account.Id
-            });
+                db.AccountingAccountMappings.Add(new AccountingAccountMapping
+                {
+                    OrganizationId = orgId,
+                    MappingKey = mappingKey,
+                    AccountId = account.Id
+                });
+                mappingsChanged++;
+                continue;
+            }
+
+            // Keep seeded system mappings aligned with the default CoA codes.
+            if (mapping.AccountId != account.Id)
+            {
+                mapping.AccountId = account.Id;
+                mapping.UpdatedAt = DateTimeOffset.UtcNow;
+                mappingsChanged++;
+            }
         }
 
+        var categoriesAdded = 0;
         var expenseAccount = accountByCode.GetValueOrDefault("6000");
         if (expenseAccount is not null)
         {
@@ -85,6 +103,7 @@ public static class AccountingSeed
                     AccountId = expenseAccount.Id,
                     IsActive = true
                 });
+                categoriesAdded++;
             }
         }
 
@@ -108,6 +127,9 @@ public static class AccountingSeed
             periodsAdded++;
         }
 
-        return (accountsAdded, periodsAdded);
+        if (db.ChangeTracker.HasChanges())
+            await db.SaveChangesAsync();
+
+        return (accountsAdded, periodsAdded, mappingsChanged, categoriesAdded);
     }
 }

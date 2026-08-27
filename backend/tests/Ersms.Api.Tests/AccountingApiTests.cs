@@ -129,4 +129,60 @@ public class AccountingApiTests : IClassFixture<ApiFactory>
 
         await _client.PostAsync($"/api/v1/accounting/periods/{periodId}/reopen", null);
     }
+
+    [Fact]
+    public async Task Subsequent_payment_posts_journal_when_mappings_present()
+    {
+        await LoginAsync();
+
+        var maps = await _client.GetAsync("/api/v1/accounting/mappings");
+        maps.EnsureSuccessStatusCode();
+        var mapList = await maps.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
+        mapList.EnumerateArray().Should().Contain(m => m.GetProperty("mappingKey").GetString() == "Cash");
+        mapList.EnumerateArray().Should().Contain(m => m.GetProperty("mappingKey").GetString() == "AccountsReceivable");
+        mapList.EnumerateArray().Should().Contain(m =>
+            m.GetProperty("mappingKey").GetString() == "Bank" &&
+            m.GetProperty("accountCode").GetString() == "1010");
+
+        var partRes = await _client.PostAsJsonAsync("/api/v1/parts", new
+        {
+            sku = $"PAY-{Guid.NewGuid():N}".Substring(0, 12),
+            name = "Payment Test Part",
+            unitCost = 10m,
+            unitPrice = 50m,
+            reorderLevel = 0m
+        });
+        partRes.EnsureSuccessStatusCode();
+        var partId = (await partRes.Content.ReadFromJsonAsync<JsonElement>(JsonOptions)).GetProperty("id").GetGuid();
+        await _client.PostAsJsonAsync($"/api/v1/parts/{partId}/adjustments", new { quantityDelta = 5m, reason = "stock" });
+
+        var saleRes = await _client.PostAsJsonAsync("/api/v1/sales", new
+        {
+            lines = new[] { new { partId, quantity = 1m, unitPrice = 50m } }
+        });
+        saleRes.EnsureSuccessStatusCode();
+        var sale = await saleRes.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
+        var saleId = sale.GetProperty("id").GetGuid();
+        sale.GetProperty("balanceDue").GetDecimal().Should().Be(50m);
+
+        var payRes = await _client.PostAsJsonAsync($"/api/v1/sales/{saleId}/payments", new
+        {
+            amount = 50m,
+            methodCode = "CASH",
+            idempotencyKey = $"subpay-{Guid.NewGuid():N}"
+        });
+        payRes.EnsureSuccessStatusCode();
+        var paid = await payRes.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
+        paid.GetProperty("balanceDue").GetDecimal().Should().Be(0m);
+
+        var paymentId = paid.GetProperty("payments").EnumerateArray()
+            .First(p => p.GetProperty("status").GetString() == "Succeeded")
+            .GetProperty("id").GetGuid();
+        var journal = await _client.GetAsync($"/api/v1/journals/by-source?sourceType=PaymentSucceeded&sourceId={paymentId}");
+        journal.EnsureSuccessStatusCode();
+        var body = await journal.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
+        var lines = body.GetProperty("lines").EnumerateArray().ToList();
+        lines.Sum(l => l.GetProperty("debit").GetDecimal())
+            .Should().Be(lines.Sum(l => l.GetProperty("credit").GetDecimal()));
+    }
 }

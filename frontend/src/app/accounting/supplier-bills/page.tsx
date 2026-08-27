@@ -4,6 +4,7 @@ import { AppShell } from "@/components/app-shell";
 import { useAuth } from "@/components/auth-provider";
 import { api, ApiClientError, Paged } from "@/lib/api";
 import { formatOrgDateTime } from "@/lib/datetime";
+import { newIdempotencyKey } from "@/lib/id";
 import { FormEvent, useEffect, useState } from "react";
 
 type Bill = {
@@ -23,10 +24,6 @@ type PaymentMethod = { id: string; code: string; name: string };
 
 const fieldClass = "w-full rounded-md border border-slate-300 px-3 py-2 text-sm";
 const labelClass = "mb-1 block text-xs font-medium text-slate-600";
-
-function newIdempotencyKey() {
-  return crypto.randomUUID();
-}
 
 export default function SupplierBillsPage() {
   const { user } = useAuth();

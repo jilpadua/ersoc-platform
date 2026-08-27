@@ -390,16 +390,10 @@ public sealed class ExpenseService : IExpenseService
             entity.Category = await _db.ExpenseCategories.FirstAsync(c => c.Id == entity.CategoryId, ct);
 
         var maps = await AccountingLineBuilders.LoadMapsAsync(_db, entity.OrganizationId, ct);
-        if (!maps.ContainsKey(MappingKeys.AccountsPayable) ||
-            !maps.ContainsKey(MappingKeys.Cash) ||
-            !maps.ContainsKey(MappingKeys.Bank) ||
-            !maps.ContainsKey(MappingKeys.CardClearing))
-        {
-            return Result<ExpenseDto>.Failure(ErrorCodes.Conflict, "Accounting account mappings are incomplete.");
-        }
-
         var lines = AccountingLineBuilders.ExpensePosted(
             maps, entity.Category.AccountId, entity.Amount, entity.MethodCode, entity.Payable);
+        if (!lines.IsSuccess)
+            return Result<ExpenseDto>.Failure(lines.ErrorCode!, lines.ErrorMessage!);
 
         await using var tx = await _db.BeginTransactionAsync(ct);
         try
@@ -411,7 +405,7 @@ public sealed class ExpenseService : IExpenseService
                 AccountingSourceTypes.ExpensePosted,
                 entity.Id,
                 $"Expense {entity.Id}",
-                lines), ct);
+                lines.Value!), ct);
             if (!journal.IsSuccess)
             {
                 await tx.RollbackAsync(ct);

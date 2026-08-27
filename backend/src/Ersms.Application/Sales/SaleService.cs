@@ -377,10 +377,15 @@ public sealed class SaleService : ISaleService
             var cogs = Math.Round(lines.Sum(l => l.UnitCost * l.Quantity), 2);
             var saleLines = AccountingLineBuilders.SaleCompleted(
                 maps, sale.TotalAmount, sale.AmountPaid, checkoutPayment?.MethodCode, cogs);
+            if (!saleLines.IsSuccess)
+            {
+                await tx.RollbackAsync(ct);
+                return Result<SaleDetailDto>.Failure(saleLines.ErrorCode!, saleLines.ErrorMessage!);
+            }
             var saleJournal = await _posting.PostAsync(new PostJournalRequest(
                 orgId, sale.BranchId, sale.CompletedAt ?? now,
                 AccountingSourceTypes.SaleCompleted, sale.Id,
-                $"Sale {sale.SaleNumber}", saleLines), ct);
+                $"Sale {sale.SaleNumber}", saleLines.Value!), ct);
             if (!saleJournal.IsSuccess)
             {
                 await tx.RollbackAsync(ct);
@@ -497,10 +502,15 @@ public sealed class SaleService : ISaleService
 
             var maps = await AccountingLineBuilders.LoadMapsAsync(_db, orgId, ct);
             var payLines = AccountingLineBuilders.PaymentSucceeded(maps, request.Amount, request.MethodCode);
+            if (!payLines.IsSuccess)
+            {
+                await tx.RollbackAsync(ct);
+                return Result<SaleDetailDto>.Failure(payLines.ErrorCode!, payLines.ErrorMessage!);
+            }
             var journal = await _posting.PostAsync(new PostJournalRequest(
                 orgId, sale.BranchId, paymentEntity.PaidAt,
                 AccountingSourceTypes.PaymentSucceeded, paymentEntity.Id,
-                $"Payment on {sale.SaleNumber}", payLines), ct);
+                $"Payment on {sale.SaleNumber}", payLines.Value!), ct);
             if (!journal.IsSuccess)
             {
                 await tx.RollbackAsync(ct);
@@ -662,10 +672,15 @@ public sealed class SaleService : ISaleService
             var creditToAr = Math.Round(refundCalc - refundAmount, 2);
             var returnLines = AccountingLineBuilders.SaleReturn(
                 maps, refundCalc, cogsAmount, refundAmount, refundMethod, creditToAr);
+            if (!returnLines.IsSuccess)
+            {
+                await tx.RollbackAsync(ct);
+                return Result<SaleDetailDto>.Failure(returnLines.ErrorCode!, returnLines.ErrorMessage!);
+            }
             var journal = await _posting.PostAsync(new PostJournalRequest(
                 orgId, sale.BranchId, returnDoc.CompletedAt,
                 AccountingSourceTypes.SaleReturnCompleted, returnDoc.Id,
-                $"Return {returnDoc.ReturnNumber}", returnLines), ct);
+                $"Return {returnDoc.ReturnNumber}", returnLines.Value!), ct);
             if (!journal.IsSuccess)
             {
                 await tx.RollbackAsync(ct);

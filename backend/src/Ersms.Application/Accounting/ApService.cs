@@ -171,6 +171,8 @@ public sealed class ApService : IApService
 
         var maps = await AccountingLineBuilders.LoadMapsAsync(_db, orgId, ct);
         var lines = AccountingLineBuilders.SupplierPayment(maps, request.Amount, request.MethodCode);
+        if (!lines.IsSuccess)
+            return Result<SupplierPaymentDto>.Failure(lines.ErrorCode!, lines.ErrorMessage!);
         var paidAt = request.PaidAt ?? DateTimeOffset.UtcNow;
 
         await using var tx = await _db.BeginTransactionAsync(ct);
@@ -208,7 +210,7 @@ public sealed class ApService : IApService
 
             var journal = await _posting.PostAsync(new PostJournalRequest(
                 orgId, branchId, paidAt, AccountingSourceTypes.SupplierPayment, payment.Id,
-                $"Supplier payment {payment.Id}", lines), ct);
+                $"Supplier payment {payment.Id}", lines.Value!), ct);
             if (!journal.IsSuccess)
             {
                 await tx.RollbackAsync(ct);

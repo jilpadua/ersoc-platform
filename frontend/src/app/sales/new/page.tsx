@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { api, ApiClientError, Paged } from "@/lib/api";
+import { newIdempotencyKey } from "@/lib/id";
 import { FormEvent, useEffect, useState } from "react";
 
 type Customer = { id: string; name: string };
@@ -13,10 +14,6 @@ type LineDraft = { partId: string; quantity: string; unitPrice: string };
 
 const fieldClass = "w-full rounded-md border border-slate-300 px-3 py-2 text-sm";
 const labelClass = "mb-1 block text-xs font-medium text-slate-600";
-
-function newIdempotencyKey() {
-  return crypto.randomUUID();
-}
 
 export default function NewSalePage() {
   const router = useRouter();
@@ -90,7 +87,13 @@ export default function NewSalePage() {
       });
       router.push(`/sales/${sale.id}`);
     } catch (err: unknown) {
-      setError(err instanceof ApiClientError ? err.message : "Failed to complete sale");
+      setError(
+        err instanceof ApiClientError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : "Failed to complete sale"
+      );
       setSaving(false);
     }
   }

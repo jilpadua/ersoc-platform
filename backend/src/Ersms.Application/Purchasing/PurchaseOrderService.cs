@@ -365,10 +365,15 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
             {
                 var maps = await AccountingLineBuilders.LoadMapsAsync(_db, orgId, ct);
                 var lines = AccountingLineBuilders.PurchaseReceived(maps, inventoryValue);
+                if (!lines.IsSuccess)
+                {
+                    await tx.RollbackAsync(ct);
+                    return Result<PurchaseOrderDetailDto>.Failure(lines.ErrorCode!, lines.ErrorMessage!);
+                }
                 var journal = await _posting.PostAsync(new PostJournalRequest(
                     orgId, po.BranchId, receive.ReceivedAt,
                     AccountingSourceTypes.PurchaseReceived, receive.Id,
-                    $"PO receive {po.PoNumber}", lines), ct);
+                    $"PO receive {po.PoNumber}", lines.Value!), ct);
                 if (!journal.IsSuccess)
                 {
                     await tx.RollbackAsync(ct);

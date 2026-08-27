@@ -281,12 +281,17 @@ public sealed class PartService : IPartService
             {
                 var maps = await AccountingLineBuilders.LoadMapsAsync(_db, orgId, ct);
                 var lines = AccountingLineBuilders.StockAdjusted(maps, valueDelta);
-                if (lines.Count > 0)
+                if (!lines.IsSuccess)
+                {
+                    await tx.RollbackAsync(ct);
+                    return Result<PartDto>.Failure(lines.ErrorCode!, lines.ErrorMessage!);
+                }
+                if (lines.Value!.Count > 0)
                 {
                     var journal = await _posting.PostAsync(new PostJournalRequest(
                         orgId, branch, ledger.CreatedAt,
                         AccountingSourceTypes.StockAdjusted, ledger.Id,
-                        $"Stock adjust {entity.Sku}", lines), ct);
+                        $"Stock adjust {entity.Sku}", lines.Value), ct);
                     if (!journal.IsSuccess)
                     {
                         await tx.RollbackAsync(ct);

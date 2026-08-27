@@ -6,6 +6,7 @@ import { AppShell } from "@/components/app-shell";
 import { useAuth } from "@/components/auth-provider";
 import { api, ApiClientError } from "@/lib/api";
 import { formatOrgDateTime } from "@/lib/datetime";
+import { newIdempotencyKey } from "@/lib/id";
 import { FormEvent, useEffect, useState } from "react";
 
 type PaymentMethod = { id: string; code: string; name: string };
@@ -65,10 +66,6 @@ type SaleDetail = {
 const fieldClass = "w-full rounded-md border border-slate-300 px-3 py-2 text-sm";
 const labelClass = "mb-1 block text-xs font-medium text-slate-600";
 
-function newIdempotencyKey() {
-  return crypto.randomUUID();
-}
-
 export default function SaleDetailPage() {
   const params = useParams<{ id: string }>();
   const { user } = useAuth();
@@ -113,7 +110,13 @@ export default function SaleDetailPage() {
       });
       await load();
     } catch (err: unknown) {
-      setError(err instanceof ApiClientError ? err.message : "Payment failed");
+      setError(
+        err instanceof ApiClientError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : "Payment failed"
+      );
     }
   }
 
