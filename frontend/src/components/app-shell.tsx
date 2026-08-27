@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/components/auth-provider";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 
 type NavItem = { href: string; label: string };
@@ -110,10 +110,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     { type: string; id: string; title: string; subtitle?: string }[]
   >([]);
   const [expanded, setExpanded] = useState<Record<string, boolean>>(defaultExpanded);
-
-  useEffect(() => {
-    setExpanded(loadExpanded());
-  }, []);
+  const prevPathnameRef = useRef<string | null>(null);
+  const sectionsHydratedRef = useRef(false);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -121,21 +119,41 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     }
   }, [loading, user, router]);
 
-  const activeGroupIds = useMemo(() => {
-    return new Set(
-      navGroups
-        .filter((g) => g.items.some((item) => isNavActive(pathname, item.href)))
-        .map((g) => g.id)
-    );
+  useEffect(() => {
+    function openGroupsForPath(
+      path: string,
+      base: Record<string, boolean>
+    ): Record<string, boolean> {
+      const next = { ...base };
+      for (const group of navGroups) {
+        if (group.items.some((item) => isNavActive(path, item.href))) {
+          next[group.id] = true;
+        }
+      }
+      return next;
+    }
+
+    if (!sectionsHydratedRef.current) {
+      sectionsHydratedRef.current = true;
+      setExpanded(openGroupsForPath(pathname, loadExpanded()));
+      prevPathnameRef.current = pathname;
+      return;
+    }
+
+    if (prevPathnameRef.current === pathname) return;
+    prevPathnameRef.current = pathname;
+
+    setExpanded((prev) => {
+      const next = openGroupsForPath(pathname, prev);
+      return next;
+    });
   }, [pathname]);
 
   function isGroupExpanded(groupId: string) {
-    if (activeGroupIds.has(groupId)) return true;
     return expanded[groupId] !== false;
   }
 
   function toggleGroup(groupId: string) {
-    if (activeGroupIds.has(groupId)) return;
     setExpanded((prev) => {
       const currentlyOpen = prev[groupId] !== false;
       const next = { ...prev, [groupId]: !currentlyOpen };
