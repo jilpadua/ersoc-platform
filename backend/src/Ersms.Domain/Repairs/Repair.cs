@@ -134,6 +134,13 @@ public static class RepairWorkflow
 
         return Result.Success();
     }
+
+    public static IReadOnlyList<string> GetAllowedNext(string fromCode)
+    {
+        if (!Allowed.TryGetValue(fromCode, out var next))
+            return Array.Empty<string>();
+        return next.OrderBy(x => x).ToList();
+    }
 }
 
 public sealed class RepairCreatedEvent : DomainEventBase

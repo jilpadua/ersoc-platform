@@ -1,4 +1,4 @@
-# Database (Phase 1)
+# Database
 
 ## Engine
 
@@ -23,9 +23,17 @@ Repairs: `RepairStatusDefinitions`, `Repairs`, `RepairServiceLines`, `RepairStat
 
 Audit: `AuditLogs` (append-only)
 
+## Phase 2 tables
+
+Inventory: `Parts`, `StockLedgerEntries` (append-only quantity deltas)
+
+Purchasing: `Suppliers`, `PurchaseOrders`, `PurchaseOrderLines`
+
 ## Critical constraints
 
 - Unique `(OrganizationId, RepairNumber)` on `Repairs`
+- Unique `(OrganizationId, PoNumber)` on `PurchaseOrders`
+- Unique `(OrganizationId, Sku)` on `Parts`
 - Unique `(OrganizationId, Code)` on roles and repair status definitions
 - Unique `(OrganizationId, NormalizedEmail)` on users
-- Indexes on customer phone/name, device serial/IMEI, audit timestamp
+- Indexes on customer phone/name, device serial/IMEI, stock ledger `(OrganizationId, BranchId, PartId)`, audit timestamp

@@ -12,43 +12,62 @@
 
 ## Phase roadmap
 
-| Phase | Focus | Exit criteria (summary) |
-|-------|--------|-------------------------|
-| **0** | Discovery + docs | Architecture and development plan documented; specs in repo |
-| **1** | Core platform | Identity, org/branch, customers, devices, services, repairs, dashboard, audit, tests |
-| **2** | Inventory & purchasing | Stock ledger, suppliers, POs, receiving, low-stock alerts, tests |
-| **3** | Sales / POS | Sales, payments (idempotent), invoices, returns, inventory deduction, tests |
-| **4** | Accounting | Chart of accounts, journals, balanced entries, financial reports, tests |
-| **5** | Automation | Domain-event notifications, Hangfire jobs, reminders, delivery tracking |
-| **6** | Expansion | Portal, multi-branch transfers, mobile, analytics, integrations (as needed) |
+
+| Phase | Focus                  | Exit criteria (summary)                                                              |
+| ----- | ---------------------- | ------------------------------------------------------------------------------------ |
+| **0** | Discovery + docs       | Architecture and development plan documented; specs in repo                          |
+| **1** | Core platform          | Identity, org/branch, customers, devices, services, repairs, dashboard, audit, tests |
+| **2** | Inventory & purchasing | Stock ledger, suppliers, POs, receiving, low-stock alerts, tests                     |
+| **3** | Sales / POS            | Sales, payments (idempotent), invoices, returns, inventory deduction, tests          |
+| **4** | Accounting             | Chart of accounts, journals, balanced entries, financial reports, tests              |
+| **5** | Automation             | Domain-event notifications, Hangfire jobs, reminders, delivery tracking              |
+| **6** | Expansion              | Portal, multi-branch transfers, mobile, analytics, integrations (as needed)          |
+
+
+
 
 ## Phase 1 exit criteria
 
 - [x] Users can authenticate with cookie sessions; roles/permissions enforced on APIs
 - [x] Organization and branch seeded; all business data org-scoped
-- [x] Customers, devices, service catalog CRUD working
-- [x] Full repair workflow with configurable statuses and status history
+- [x] Customers, devices, service catalog CRUD working (create, update, soft deactivate; UI includes email)
+- [x] Full repair workflow with configurable statuses and status history (UI lists only allowed next statuses)
 - [x] Dashboard shows real Phase 1 metrics (zeros when empty; no fake sales/stock)
 - [x] Audit log records create/update/status/permission-sensitive actions; immutable to normal users
 - [x] Global search covers repair #, customer name/phone, device model/serial/IMEI
 - [x] Domain + API tests green (authz, repair transitions, audit)
 - [x] `docs/architecture.md` and related docs match implementation
 
-**Do not start Phase 2 until Phase 1 is stable and the above checklist is met.**
+Hard deletes of customers/devices/services (and posted transactional rows) are deferred; Phase 1 uses soft deactivate (`IsActive`) so repair history stays intact.
+
+## Phase 2 exit criteria
+
+- [x] Parts catalog with soft deactivate; on-hand derived from append-only stock ledger
+- [x] Stock adjustments reject negative on-hand; ledger history available per part
+- [x] Suppliers CRUD with soft deactivate
+- [x] Purchase orders: draft → submit → receive (partial/full) → cancel rules; receiving posts ledger credits
+- [x] Dashboard low-stock count (on hand < reorder level) is real
+- [x] `inventory.*` / `purchasing.*` permissions seeded for Owner, Admin, Inventory staff
+- [x] Domain + API tests for stock math, PO workflow, adjust/receive flows
+- [x] Docs updated (`api`, `database`, `modules`, `architecture`, `business-rules`)
+
+**Do not start Phase 3 until Phase 2 is stable and the above checklist is met.**
 
 ## Increment workflow
 
 For every implementation task:
 
-1. Inspect relevant files  
-2. Explain what will change  
-3. Implement  
-4. Run type checking / build  
-5. Run tests  
-6. Fix failures  
-7. Review for architectural violations  
-8. Update documentation  
-9. Summarize completed work  
+1. Inspect relevant files
+2. Explain what will change
+3. Implement
+4. Run type checking / build
+5. Run tests
+6. Fix failures
+7. Review for architectural violations
+8. Update documentation
+9. Summarize completed work
+
+
 
 ## Local development (Phase 1)
 
@@ -76,14 +95,19 @@ Default seed credentials are documented in `.env.example` / `appsettings.Develop
 - **Integration / API:** WebApplicationFactory + Testcontainers PostgreSQL
 - **E2E (later):** critical shop flows once UI stabilizes
 
+
+
 ## Documentation set
 
-| Doc | Purpose |
-|-----|---------|
-| `architecture.md` | Target architecture and decisions |
-| `development-plan.md` | Phases and exit criteria |
-| `database.md` | Schema notes (evolve with migrations) |
-| `api.md` | API conventions and Phase endpoints |
-| `modules.md` | Module ownership |
-| `business-rules.md` | Repair workflow and invariants |
-| `testing.md` | How to run tests |
+
+| Doc                   | Purpose                               |
+| --------------------- | ------------------------------------- |
+| `architecture.md`     | Target architecture and decisions     |
+| `development-plan.md` | Phases and exit criteria              |
+| `database.md`         | Schema notes (evolve with migrations) |
+| `api.md`              | API conventions and Phase endpoints   |
+| `modules.md`          | Module ownership                      |
+| `business-rules.md`   | Repair workflow and invariants        |
+| `testing.md`          | How to run tests                      |
+
+

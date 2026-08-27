@@ -2,6 +2,8 @@ using Ersms.Domain.Audit;
 using Ersms.Domain.Customers;
 using Ersms.Domain.Devices;
 using Ersms.Domain.Identity;
+using Ersms.Domain.Inventory;
+using Ersms.Domain.Purchasing;
 using Ersms.Domain.Repairs;
 using Ersms.Domain.ServiceCatalog;
 using Microsoft.EntityFrameworkCore;
@@ -28,6 +30,11 @@ public interface IApplicationDbContext
     DbSet<RepairNote> RepairNotes { get; }
     DbSet<RepairPhoto> RepairPhotos { get; }
     DbSet<AuditLog> AuditLogs { get; }
+    DbSet<Part> Parts { get; }
+    DbSet<StockLedgerEntry> StockLedgerEntries { get; }
+    DbSet<Supplier> Suppliers { get; }
+    DbSet<PurchaseOrder> PurchaseOrders { get; }
+    DbSet<PurchaseOrderLine> PurchaseOrderLines { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }
