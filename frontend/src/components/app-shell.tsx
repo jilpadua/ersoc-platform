@@ -3,31 +3,103 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/components/auth-provider";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 
-const nav = [
-  { href: "/dashboard", label: "Dashboard" },
-  { href: "/customers", label: "Customers" },
-  { href: "/devices", label: "Devices" },
-  { href: "/repairs", label: "Repairs" },
-  { href: "/services", label: "Services" },
-  { href: "/parts", label: "Parts" },
-  { href: "/suppliers", label: "Suppliers" },
-  { href: "/purchase-orders", label: "Purchase orders" },
-  { href: "/sales", label: "Sales" },
-  { href: "/invoices", label: "Invoices" },
-  { href: "/accounting/accounts", label: "Accounts" },
-  { href: "/accounting/periods", label: "Periods" },
-  { href: "/accounting/journals", label: "Journals" },
-  { href: "/accounting/mappings", label: "Mappings" },
-  { href: "/accounting/expenses", label: "Expenses" },
-  { href: "/accounting/supplier-bills", label: "Supplier bills" },
-  { href: "/accounting/reports", label: "Reports" },
-  { href: "/accounting/reconciliation", label: "Reconciliation" },
-  { href: "/audit", label: "Audit" },
-  { href: "/settings", label: "Settings" },
+type NavItem = { href: string; label: string };
+type NavGroup = { id: string; label: string; items: NavItem[] };
+
+const dashboardItem: NavItem = { href: "/dashboard", label: "Dashboard" };
+
+const navGroups: NavGroup[] = [
+  {
+    id: "operations",
+    label: "Operations",
+    items: [
+      { href: "/customers", label: "Customers" },
+      { href: "/devices", label: "Devices" },
+      { href: "/repairs", label: "Repairs" },
+    ],
+  },
+  {
+    id: "catalog",
+    label: "Catalog",
+    items: [
+      { href: "/services", label: "Services" },
+      { href: "/parts", label: "Parts" },
+    ],
+  },
+  {
+    id: "purchasing",
+    label: "Purchasing",
+    items: [
+      { href: "/suppliers", label: "Suppliers" },
+      { href: "/purchase-orders", label: "Purchase orders" },
+      { href: "/accounting/supplier-bills", label: "Supplier bills" },
+    ],
+  },
+  {
+    id: "sales",
+    label: "Sales",
+    items: [
+      { href: "/sales", label: "Sales" },
+      { href: "/invoices", label: "Invoices" },
+    ],
+  },
+  {
+    id: "accounting",
+    label: "Accounting",
+    items: [
+      { href: "/accounting/accounts", label: "Accounts" },
+      { href: "/accounting/journals", label: "Journals" },
+      { href: "/accounting/expenses", label: "Expenses" },
+      { href: "/accounting/reconciliation", label: "Reconciliation" },
+      { href: "/accounting/periods", label: "Periods" },
+      { href: "/accounting/mappings", label: "Mappings" },
+    ],
+  },
+  {
+    id: "insights",
+    label: "Insights",
+    items: [
+      { href: "/accounting/reports", label: "Reports" },
+      { href: "/audit", label: "Audit" },
+    ],
+  },
+  {
+    id: "system",
+    label: "System",
+    items: [{ href: "/settings", label: "Settings" }],
+  },
 ];
+
+const STORAGE_KEY = "ersms.sidebar.sections";
+
+function defaultExpanded(): Record<string, boolean> {
+  return Object.fromEntries(navGroups.map((g) => [g.id, true]));
+}
+
+function isNavActive(pathname: string, href: string) {
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+function loadExpanded(): Record<string, boolean> {
+  const defaults = defaultExpanded();
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return defaults;
+    const parsed = JSON.parse(raw) as Record<string, boolean>;
+    return { ...defaults, ...parsed };
+  } catch {
+    return defaults;
+  }
+}
+
+function linkClass(active: boolean) {
+  return `rounded-md px-3 py-2 text-sm font-medium ${
+    active ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"
+  }`;
+}
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { user, logout, loading } = useAuth();
@@ -37,12 +109,62 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [results, setResults] = useState<
     { type: string; id: string; title: string; subtitle?: string }[]
   >([]);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>(defaultExpanded);
+  const prevPathnameRef = useRef<string | null>(null);
+  const sectionsHydratedRef = useRef(false);
 
   useEffect(() => {
     if (!loading && !user) {
       router.replace("/login");
     }
   }, [loading, user, router]);
+
+  useEffect(() => {
+    function openGroupsForPath(
+      path: string,
+      base: Record<string, boolean>
+    ): Record<string, boolean> {
+      const next = { ...base };
+      for (const group of navGroups) {
+        if (group.items.some((item) => isNavActive(path, item.href))) {
+          next[group.id] = true;
+        }
+      }
+      return next;
+    }
+
+    if (!sectionsHydratedRef.current) {
+      sectionsHydratedRef.current = true;
+      setExpanded(openGroupsForPath(pathname, loadExpanded()));
+      prevPathnameRef.current = pathname;
+      return;
+    }
+
+    if (prevPathnameRef.current === pathname) return;
+    prevPathnameRef.current = pathname;
+
+    setExpanded((prev) => {
+      const next = openGroupsForPath(pathname, prev);
+      return next;
+    });
+  }, [pathname]);
+
+  function isGroupExpanded(groupId: string) {
+    return expanded[groupId] !== false;
+  }
+
+  function toggleGroup(groupId: string) {
+    setExpanded((prev) => {
+      const currentlyOpen = prev[groupId] !== false;
+      const next = { ...prev, [groupId]: !currentlyOpen };
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      } catch {
+        /* ignore quota / private mode */
+      }
+      return next;
+    });
+  }
 
   if (loading) {
     return (
@@ -75,7 +197,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900">
       <div className="mx-auto flex min-h-screen max-w-[1400px]">
-        <aside className="flex w-56 flex-col border-r border-slate-200 bg-white px-3 py-5">
+        <aside className="flex w-56 shrink-0 flex-col overflow-y-auto border-r border-slate-200 bg-white px-3 py-5">
           <div className="mb-6 px-2">
             <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
               ERSMS
@@ -85,20 +207,47 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           </div>
           <nav className="flex flex-1 flex-col gap-1">
-            {nav.map((item) => {
-              const active = pathname.startsWith(item.href);
+            <Link
+              href={dashboardItem.href}
+              className={linkClass(isNavActive(pathname, dashboardItem.href))}
+            >
+              {dashboardItem.label}
+            </Link>
+
+            {navGroups.map((group) => {
+              const open = isGroupExpanded(group.id);
+              const panelId = `nav-section-${group.id}`;
               return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`rounded-md px-3 py-2 text-sm font-medium ${
-                    active
-                      ? "bg-slate-900 text-white"
-                      : "text-slate-700 hover:bg-slate-100"
-                  }`}
-                >
-                  {item.label}
-                </Link>
+                <div key={group.id} className="mt-3">
+                  <button
+                    type="button"
+                    aria-expanded={open}
+                    aria-controls={panelId}
+                    onClick={() => toggleGroup(group.id)}
+                    className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 outline-none hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-slate-400"
+                  >
+                    <span>{group.label}</span>
+                    <span className="text-[10px] leading-none" aria-hidden>
+                      {open ? "˅" : "˃"}
+                    </span>
+                  </button>
+                  {open && (
+                    <div id={panelId} className="mt-1 flex flex-col gap-1 pl-1">
+                      {group.items.map((item) => {
+                        const active = isNavActive(pathname, item.href);
+                        return (
+                          <Link
+                            key={item.href}
+                            href={item.href}
+                            className={linkClass(active)}
+                          >
+                            {item.label}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               );
             })}
           </nav>
@@ -114,7 +263,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </button>
           </div>
         </aside>
-        <main className="flex-1 p-6">
+        <main className="min-w-0 flex-1 p-6">
           <form onSubmit={onSearch} className="mb-4 flex gap-2">
             <input
               value={q}
