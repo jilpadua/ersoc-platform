@@ -14,7 +14,9 @@ type Service = {
   categoryName?: string;
 };
 
-const emptyForm = { name: "", description: "", defaultPrice: "0", warrantyDays: "30" };
+const emptyForm = { name: "", description: "", defaultPrice: "", warrantyDays: "" };
+const fieldClass = "w-full rounded-md border border-slate-300 px-3 py-2 text-sm";
+const labelClass = "mb-1 block text-xs font-medium text-slate-600";
 
 export default function ServicesPage() {
   const [items, setItems] = useState<Service[]>([]);
@@ -54,8 +56,8 @@ export default function ServicesPage() {
       const body = {
         name: form.name,
         description: form.description || null,
-        defaultPrice: Number(form.defaultPrice),
-        warrantyDays: Number(form.warrantyDays),
+        defaultPrice: Number(form.defaultPrice || 0),
+        warrantyDays: Number(form.warrantyDays || 0),
         isActive: true,
       };
       if (editingId) {
@@ -101,17 +103,60 @@ export default function ServicesPage() {
           Show inactive
         </label>
       </div>
-      <form onSubmit={onSubmit} className="mb-4 grid gap-2 rounded-lg border border-slate-200 bg-white p-4 md:grid-cols-5">
-        <input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Service name" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
-        <input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Description" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
-        <input required type="number" min="0" step="0.01" value={form.defaultPrice} onChange={(e) => setForm({ ...form, defaultPrice: e.target.value })} placeholder="Price" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
-        <input required type="number" min="0" value={form.warrantyDays} onChange={(e) => setForm({ ...form, warrantyDays: e.target.value })} placeholder="Warranty days" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
-        <div className="flex gap-2">
+      <form onSubmit={onSubmit} className="mb-4 grid gap-3 rounded-lg border border-slate-200 bg-white p-4 md:grid-cols-5">
+        <div>
+          <label className={labelClass}>Name</label>
+          <input
+            required
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+            placeholder="Service name"
+            className={fieldClass}
+          />
+        </div>
+        <div>
+          <label className={labelClass}>Description</label>
+          <input
+            value={form.description}
+            onChange={(e) => setForm({ ...form, description: e.target.value })}
+            placeholder="Optional"
+            className={fieldClass}
+          />
+        </div>
+        <div>
+          <label className={labelClass}>Price</label>
+          <input
+            required
+            type="number"
+            min="0"
+            step="0.01"
+            value={form.defaultPrice}
+            onChange={(e) => setForm({ ...form, defaultPrice: e.target.value })}
+            placeholder="0.00"
+            className={fieldClass}
+          />
+        </div>
+        <div>
+          <label className={labelClass}>Warranty days</label>
+          <input
+            required
+            type="number"
+            min="0"
+            step="1"
+            value={form.warrantyDays}
+            onChange={(e) => setForm({ ...form, warrantyDays: e.target.value })}
+            placeholder="30"
+            className={fieldClass}
+          />
+        </div>
+        <div className="flex items-end gap-2">
           <button className="flex-1 rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white">
             {editingId ? "Save" : "Add service"}
           </button>
           {editingId && (
-            <button type="button" onClick={cancelEdit} className="rounded-md border border-slate-300 px-3 py-2 text-sm">Cancel</button>
+            <button type="button" onClick={cancelEdit} className="rounded-md border border-slate-300 px-3 py-2 text-sm">
+              Cancel
+            </button>
           )}
         </div>
       </form>
@@ -136,7 +181,9 @@ export default function ServicesPage() {
                 <td className="px-4 py-3">{s.isActive ? "Yes" : "No"}</td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
-                    <button type="button" onClick={() => startEdit(s)} className="text-xs font-medium underline">Edit</button>
+                    <button type="button" onClick={() => startEdit(s)} className="text-xs font-medium underline">
+                      Edit
+                    </button>
                     <button type="button" onClick={() => void toggleActive(s)} className="text-xs font-medium underline">
                       {s.isActive ? "Deactivate" : "Activate"}
                     </button>
@@ -145,7 +192,11 @@ export default function ServicesPage() {
               </tr>
             ))}
             {items.length === 0 && (
-              <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-500">No services yet.</td></tr>
+              <tr>
+                <td colSpan={5} className="px-4 py-8 text-center text-slate-500">
+                  No services yet.
+                </td>
+              </tr>
             )}
           </tbody>
         </table>

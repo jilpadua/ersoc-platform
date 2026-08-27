@@ -2,7 +2,7 @@
 
 ## Current state
 
-Phase 0 documentation and Phase 1 core platform are implemented: modular ASP.NET Core API, Next.js admin UI, PostgreSQL, cookie auth with RBAC, customers, devices, service catalog, configurable repair workflow, dashboard, audit, and search.
+Phase 0ù2 are implemented: modular ASP.NET Core API, Next.js admin UI, PostgreSQL, cookie auth with RBAC, customers, devices, service catalog, configurable repair workflow, **inventory ledger**, **suppliers/POs/receiving**, dashboard (including low-stock), audit, and search.
 
 ## Source of truth
 
@@ -25,7 +25,7 @@ Persistence / External Services (PostgreSQL, local/S3 file storage)
 
 ### Style
 
-**Modular monolith** ó modules share one PostgreSQL database and one API host, with clear ownership boundaries and in-process domain events for cross-module automation. Microservices are out of scope unless a concrete requirement cannot be met inside the monolith.
+**Modular monolith** ù modules share one PostgreSQL database and one API host, with clear ownership boundaries and in-process domain events for cross-module automation. Microservices are out of scope unless a concrete requirement cannot be met inside the monolith.
 
 ## Technology stack
 
@@ -65,7 +65,7 @@ docs/
 docker-compose.yml          # PostgreSQL for local development
 ```
 
-## Module boundaries (Phase 1)
+## Module boundaries (Phase 1ù2)
 
 | Module | Owns | Depends on |
 |--------|------|------------|
@@ -74,10 +74,12 @@ docker-compose.yml          # PostgreSQL for local development
 | Devices | Device records, identifiers, photos metadata | Customers |
 | ServiceCatalog | Categories, services, pricing, warranty days | Identity (org scope) |
 | Repairs | Tickets, status definitions/history, services lines, notes, photos | Customers, Devices, ServiceCatalog, Identity |
+| Inventory | Parts, append-only stock ledger, adjustments | Identity (org/branch) |
+| Purchasing | Suppliers, purchase orders, receiving (posts inventory ledger) | Inventory, Identity |
 | Audit | Append-only audit logs | All (via events/interceptors) |
-| Dashboard | Operational KPI read queries | Repairs, Customers (read) |
+| Dashboard | Operational KPI read queries | Repairs, Inventory |
 
-Later phases add Inventory, Purchasing, Sales/POS, Accounting, Notifications, Reporting expansions, Employees extras, Settings expansions.
+Later phases add Sales/POS, Accounting, Notifications, Reporting expansions, Employees extras, Settings expansions.
 
 ## Database strategy
 
@@ -86,7 +88,7 @@ Later phases add Inventory, Purchasing, Sales/POS, Accounting, Notifications, Re
 - Critical invariants enforced in the database (e.g. unique `(OrganizationId, RepairNumber)`).
 - Transactions for multi-step writes within a module.
 - Optimistic concurrency where high-conflict updates appear (later stock/accounting).
-- Inventory quantity and accounting balances will be **ledger-based** in Phases 2 and 4 ó not mutable totals alone.
+- Inventory quantity and accounting balances will be **ledger-based** in Phases 2 and 4 ù not mutable totals alone.
 
 ## API strategy
 
@@ -124,6 +126,6 @@ Every transition records actor, timestamp, previous status, new status, optional
 
 Operational business UI: clear tables, filters, pagination, status badges, form validation, empty/loading/error states. Optimize for daily shop workflows, not decorative marketing layouts.
 
-## Explicit non-goals (Phase 1)
+## Explicit non-goals (through Phase 2)
 
-Inventory ledger, purchasing, POS/payments, double-entry accounting, Hangfire, Redis-as-default, customer portal, multi-branch transfers, Elasticsearch.
+POS/payments, double-entry accounting, Hangfire, Redis-as-default, customer portal, multi-branch transfers, Elasticsearch, consuming parts on repair tickets (deferred).

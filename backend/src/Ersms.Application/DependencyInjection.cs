@@ -3,6 +3,8 @@ using Ersms.Application.Audit;
 using Ersms.Application.Customers;
 using Ersms.Application.Dashboard;
 using Ersms.Application.Devices;
+using Ersms.Application.Inventory;
+using Ersms.Application.Purchasing;
 using Ersms.Application.Repairs;
 using Ersms.Application.Search;
 using Ersms.Application.ServiceCatalog;
@@ -25,6 +27,9 @@ public static class DependencyInjection
         services.AddScoped<IDashboardService, DashboardService>();
         services.AddScoped<ISearchService, SearchService>();
         services.AddScoped<IAuditQueryService, AuditQueryService>();
+        services.AddScoped<IPartService, PartService>();
+        services.AddScoped<ISupplierService, SupplierService>();
+        services.AddScoped<IPurchaseOrderService, PurchaseOrderService>();
 
         return services;
     }

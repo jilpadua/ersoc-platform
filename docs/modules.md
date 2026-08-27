@@ -1,17 +1,16 @@
-# Modules (Phase 1)
+# Modules
 
 | Module | Project area | Responsibility |
 |--------|--------------|----------------|
-| SharedKernel | `Ersms.SharedKernel` | Result, paging, permissions, current user |
-| Identity | Domain + Infrastructure Identity / seed | Org, branch, users, roles, permissions, cookies |
-| Customers | `Application/Customers` | Customer profiles |
-| Devices | `Application/Devices` | Device records |
-| ServiceCatalog | `Application/ServiceCatalog` | Categories and priced services |
-| Repairs | `Application/Repairs` + `Domain/Repairs` | Tickets, configurable statuses, transitions |
-| Audit | `Application/Audit` + `Infrastructure/Audit` | Append-only audit trail |
-| Dashboard | `Application/Dashboard` | Operational KPIs |
-| Search | `Application/Search` | Indexed DB search |
-| Infrastructure | `Ersms.Infrastructure` | EF Core, file storage, seeding |
-| API | `Ersms.Api` | Controllers `/api/v1` |
+| Identity | Domain/Identity, Infrastructure Auth | Organizations, branches, users, roles, permissions |
+| Customers | Domain/Customers, Application/Customers | Customer profiles |
+| Devices | Domain/Devices, Application/Devices | Device records |
+| ServiceCatalog | Domain/ServiceCatalog, Application/ServiceCatalog | Categories and billable services |
+| Repairs | Domain/Repairs, Application/Repairs | Tickets, workflow, notes, service lines |
+| Inventory | Domain/Inventory, Application/Inventory | Parts catalog, stock ledger, adjustments |
+| Purchasing | Domain/Purchasing, Application/Purchasing | Suppliers, purchase orders, receiving |
+| Audit | Domain/Audit, Application/Audit | Append-only audit query |
+| Dashboard | Application/Dashboard | Operational KPIs |
+| Search | Application/Search | Global search |
 
-Future modules (not implemented): Inventory, Purchasing, Sales, Accounting, Notifications, Reporting expansions.
+Future modules (not implemented): Sales/POS, Accounting, Notifications, Reporting expansions, multi-branch transfers.

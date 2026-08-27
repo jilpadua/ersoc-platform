@@ -40,7 +40,18 @@
 
 Hard deletes of customers/devices/services (and posted transactional rows) are deferred; Phase 1 uses soft deactivate (`IsActive`) so repair history stays intact.
 
-**Do not start Phase 2 until Phase 1 is stable and the above checklist is met.**
+## Phase 2 exit criteria
+
+- [x] Parts catalog with soft deactivate; on-hand derived from append-only stock ledger
+- [x] Stock adjustments reject negative on-hand; ledger history available per part
+- [x] Suppliers CRUD with soft deactivate
+- [x] Purchase orders: draft → submit → receive (partial/full) → cancel rules; receiving posts ledger credits
+- [x] Dashboard low-stock count (on hand < reorder level) is real
+- [x] `inventory.*` / `purchasing.*` permissions seeded for Owner, Admin, Inventory staff
+- [x] Domain + API tests for stock math, PO workflow, adjust/receive flows
+- [x] Docs updated (`api`, `database`, `modules`, `architecture`, `business-rules`)
+
+**Do not start Phase 3 until Phase 2 is stable and the above checklist is met.**
 
 ## Increment workflow
 
