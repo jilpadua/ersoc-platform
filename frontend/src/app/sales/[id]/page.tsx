@@ -279,8 +279,8 @@ export default function SaleDetailPage() {
                   <label className={labelClass}>Quantity</label>
                   <input
                     type="number"
-                    step="0.01"
-                    min="0.01"
+                    step="1"
+                    min="1"
                     value={returnQty}
                     onChange={(e) => setReturnQty(e.target.value)}
                     required
