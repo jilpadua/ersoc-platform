@@ -45,6 +45,9 @@ public class SalesPosApiTests : IClassFixture<ApiFactory>
         sale.GetProperty("balanceDue").GetDecimal().Should().Be(600m);
         sale.GetProperty("invoice").GetProperty("status").GetString().Should().Be("PARTIAL");
         sale.GetProperty("lines").EnumerateArray().First().GetProperty("unitCost").GetDecimal().Should().Be(400m);
+        sale.GetProperty("invoice").TryGetProperty("issuedAt", out _).Should().BeTrue();
+        sale.GetProperty("invoice").TryGetProperty("createdAt", out _).Should().BeTrue();
+        sale.GetProperty("completedAt").ValueKind.Should().NotBe(JsonValueKind.Null);
 
         var paidSum = sale.GetProperty("payments").EnumerateArray().Sum(p => p.GetProperty("amount").GetDecimal());
         sale.GetProperty("amountPaid").GetDecimal().Should().Be(paidSum);
@@ -103,6 +106,8 @@ public class SalesPosApiTests : IClassFixture<ApiFactory>
         var afterRet = await ret.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
         afterRet.GetProperty("amountPaid").GetDecimal()
             .Should().Be(afterRet.GetProperty("payments").EnumerateArray().Sum(p => p.GetProperty("amount").GetDecimal()));
+        afterRet.GetProperty("returns").EnumerateArray().First().TryGetProperty("refundedAt", out var refundedAt).Should().BeTrue();
+        refundedAt.ValueKind.Should().NotBe(JsonValueKind.Null);
 
         var afterReturn = await _client.GetAsync($"/api/v1/parts/{partId}");
         (await afterReturn.Content.ReadFromJsonAsync<JsonElement>(JsonOptions))
@@ -146,8 +151,12 @@ public class SalesPosApiTests : IClassFixture<ApiFactory>
 
         var voidRes = await _client.PostAsync($"/api/v1/sales/{saleId}/void", null);
         voidRes.EnsureSuccessStatusCode();
-        (await voidRes.Content.ReadFromJsonAsync<JsonElement>(JsonOptions))
-            .GetProperty("status").GetString().Should().Be("VOIDED");
+        var voided = await voidRes.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
+        voided.GetProperty("status").GetString().Should().Be("VOIDED");
+        voided.TryGetProperty("voidedAt", out var voidedAt).Should().BeTrue();
+        voidedAt.ValueKind.Should().NotBe(JsonValueKind.Null);
+        voided.GetProperty("invoice").TryGetProperty("voidedAt", out var invVoided).Should().BeTrue();
+        invVoided.ValueKind.Should().NotBe(JsonValueKind.Null);
 
         var payVoided = await _client.PostAsJsonAsync($"/api/v1/sales/{saleId}/payments", new
         {

@@ -48,6 +48,7 @@ public class AuthAndRepairApiTests : IClassFixture<ApiFactory>
         var me = await login.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
         me.GetProperty("email").GetString().Should().Be("owner@ersms.local");
         me.GetProperty("permissions").EnumerateArray().Should().NotBeEmpty();
+        me.GetProperty("timeZoneId").GetString().Should().NotBeNullOrWhiteSpace();
     }
 
     [Fact]

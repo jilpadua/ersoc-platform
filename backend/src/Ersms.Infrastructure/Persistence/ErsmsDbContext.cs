@@ -86,6 +86,7 @@ public class ErsmsDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Gu
         {
             e.HasKey(x => x.Id);
             e.Property(x => x.Name).HasMaxLength(200).IsRequired();
+            e.Property(x => x.TimeZoneId).HasMaxLength(64).IsRequired();
         });
 
         builder.Entity<Branch>(e =>

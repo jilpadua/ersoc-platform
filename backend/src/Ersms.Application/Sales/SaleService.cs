@@ -8,10 +8,29 @@ using Microsoft.EntityFrameworkCore;
 namespace Ersms.Application.Sales;
 
 public sealed record SaleLineDto(Guid Id, Guid PartId, string Description, decimal Quantity, decimal UnitPrice, decimal UnitCost, decimal Discount, decimal LineTotal);
-public sealed record PaymentDto(Guid Id, decimal Amount, string MethodCode, DateTimeOffset PaidAt, string IdempotencyKey, string Status);
-public sealed record InvoiceDto(Guid Id, Guid SaleId, string InvoiceNumber, string Status, DateTimeOffset IssuedAt, decimal TotalAmount, decimal AmountPaid, decimal BalanceDue);
+public sealed record PaymentDto(Guid Id, decimal Amount, string MethodCode, DateTimeOffset PaidAt, DateTimeOffset CreatedAt, string IdempotencyKey, string Status);
+public sealed record InvoiceDto(
+    Guid Id,
+    Guid SaleId,
+    string InvoiceNumber,
+    string Status,
+    DateTimeOffset IssuedAt,
+    DateTimeOffset? DueAt,
+    DateTimeOffset? VoidedAt,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? UpdatedAt,
+    decimal TotalAmount,
+    decimal AmountPaid,
+    decimal BalanceDue);
 public sealed record SaleReturnLineDto(Guid Id, Guid SaleLineId, Guid PartId, decimal Quantity);
-public sealed record SaleReturnDto(Guid Id, string ReturnNumber, DateTimeOffset CompletedAt, decimal RefundAmount, IReadOnlyList<SaleReturnLineDto> Lines);
+public sealed record SaleReturnDto(
+    Guid Id,
+    string ReturnNumber,
+    DateTimeOffset CompletedAt,
+    DateTimeOffset? RefundedAt,
+    decimal RefundAmount,
+    DateTimeOffset CreatedAt,
+    IReadOnlyList<SaleReturnLineDto> Lines);
 
 public sealed record SaleListDto(
     Guid Id,
@@ -22,7 +41,9 @@ public sealed record SaleListDto(
     decimal TotalAmount,
     decimal AmountPaid,
     decimal BalanceDue,
-    DateTimeOffset? CompletedAt);
+    DateTimeOffset? CompletedAt,
+    DateTimeOffset? VoidedAt,
+    DateTimeOffset CreatedAt);
 
 public sealed record SaleDetailDto(
     Guid Id,
@@ -38,6 +59,9 @@ public sealed record SaleDetailDto(
     decimal AmountPaid,
     decimal BalanceDue,
     DateTimeOffset? CompletedAt,
+    DateTimeOffset? VoidedAt,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? UpdatedAt,
     string? Notes,
     IReadOnlyList<SaleLineDto> Lines,
     IReadOnlyList<PaymentDto> Payments,
@@ -131,7 +155,8 @@ public sealed class SaleService : ISaleService
         var items = await q.Skip(query.Skip).Take(query.Take)
             .Select(x => new SaleListDto(
                 x.Sale.Id, x.Sale.SaleNumber, x.Sale.CustomerId, x.CustomerName, x.Sale.Status,
-                x.Sale.TotalAmount, x.Sale.AmountPaid, x.Sale.BalanceDue, x.Sale.CompletedAt))
+                x.Sale.TotalAmount, x.Sale.AmountPaid, x.Sale.BalanceDue, x.Sale.CompletedAt,
+                x.Sale.VoidedAt, x.Sale.CreatedAt))
             .ToListAsync(ct);
 
         return Result<PagedResult<SaleListDto>>.Success(new PagedResult<SaleListDto>
@@ -240,6 +265,7 @@ public sealed class SaleService : ISaleService
                 }
             }
 
+            var now = DateTimeOffset.UtcNow;
             var sale = new Sale
             {
                 OrganizationId = orgId,
@@ -253,7 +279,7 @@ public sealed class SaleService : ISaleService
                 TotalAmount = total,
                 AmountPaid = 0,
                 BalanceDue = total,
-                CompletedAt = DateTimeOffset.UtcNow,
+                CompletedAt = now,
                 Notes = request.Notes,
                 CreatedByUserId = _user.UserId!.Value,
                 Lines = lines
@@ -281,7 +307,8 @@ public sealed class SaleService : ISaleService
                 SaleId = sale.Id,
                 InvoiceNumber = await NextNumberAsync("INV-", orgId, ct),
                 Status = InvoiceStatuses.Unpaid,
-                IssuedAt = DateTimeOffset.UtcNow,
+                IssuedAt = now,
+                DueAt = null,
                 TotalAmount = total,
                 AmountPaid = 0,
                 BalanceDue = total
@@ -304,7 +331,8 @@ public sealed class SaleService : ISaleService
                     SaleId = sale.Id,
                     Amount = request.Payment.Amount,
                     MethodCode = request.Payment.MethodCode,
-                    PaidAt = DateTimeOffset.UtcNow,
+                    PaidAt = now,
+                    CreatedAt = now,
                     ReceivedByUserId = _user.UserId!.Value,
                     IdempotencyKey = request.Payment.IdempotencyKey.Trim(),
                     Status = PaymentStatuses.Succeeded
@@ -410,6 +438,7 @@ public sealed class SaleService : ISaleService
                 Amount = request.Amount,
                 MethodCode = request.MethodCode,
                 PaidAt = DateTimeOffset.UtcNow,
+                CreatedAt = DateTimeOffset.UtcNow,
                 ReceivedByUserId = _user.UserId!.Value,
                 IdempotencyKey = key,
                 Status = PaymentStatuses.Succeeded
@@ -480,13 +509,14 @@ public sealed class SaleService : ISaleService
             .Select(g => new { SaleLineId = g.Key, Quantity = g.Sum(x => x.Quantity) })
             .ToList();
 
+        var returnNow = DateTimeOffset.UtcNow;
         var returnDoc = new SaleReturn
         {
             OrganizationId = orgId,
             BranchId = sale.BranchId,
             SaleId = sale.Id,
             ReturnNumber = await NextNumberAsync("RET-", orgId, ct),
-            CompletedAt = DateTimeOffset.UtcNow,
+            CompletedAt = returnNow,
             CreatedByUserId = _user.UserId!.Value
         };
 
@@ -560,11 +590,13 @@ public sealed class SaleService : ISaleService
                 SaleId = sale.Id,
                 Amount = -refundAmount,
                 MethodCode = method,
-                PaidAt = DateTimeOffset.UtcNow,
+                PaidAt = returnNow,
+                CreatedAt = returnNow,
                 ReceivedByUserId = _user.UserId!.Value,
                 IdempotencyKey = key,
                 Status = PaymentStatuses.Refunded
             });
+            returnDoc.RefundedAt = returnNow;
             amountPaid -= refundAmount;
         }
 
@@ -623,12 +655,14 @@ public sealed class SaleService : ISaleService
 
         sale.Status = SaleStatuses.Voided;
         sale.BalanceDue = 0;
-        sale.UpdatedAt = DateTimeOffset.UtcNow;
+        sale.VoidedAt = DateTimeOffset.UtcNow;
+        sale.UpdatedAt = sale.VoidedAt;
         if (sale.Invoice is not null)
         {
             sale.Invoice.Status = InvoiceStatuses.Voided;
             sale.Invoice.BalanceDue = 0;
-            sale.Invoice.UpdatedAt = DateTimeOffset.UtcNow;
+            sale.Invoice.VoidedAt = sale.VoidedAt;
+            sale.Invoice.UpdatedAt = sale.VoidedAt;
         }
 
         await _db.SaveChangesAsync(ct);
@@ -655,7 +689,9 @@ public sealed class SaleService : ISaleService
         q = q.OrderByDescending(i => i.IssuedAt);
         var total = await q.CountAsync(ct);
         var items = await q.Skip(query.Skip).Take(query.Take)
-            .Select(i => new InvoiceDto(i.Id, i.SaleId, i.InvoiceNumber, i.Status, i.IssuedAt, i.TotalAmount, i.AmountPaid, i.BalanceDue))
+            .Select(i => new InvoiceDto(
+                i.Id, i.SaleId, i.InvoiceNumber, i.Status, i.IssuedAt, i.DueAt, i.VoidedAt,
+                i.CreatedAt, i.UpdatedAt, i.TotalAmount, i.AmountPaid, i.BalanceDue))
             .ToListAsync(ct);
 
         return Result<PagedResult<InvoiceDto>>.Success(new PagedResult<InvoiceDto>
@@ -675,7 +711,9 @@ public sealed class SaleService : ISaleService
         var inv = await _db.Invoices.AsNoTracking()
             .FirstOrDefaultAsync(i => i.Id == id && i.OrganizationId == _user.OrganizationId, ct);
         if (inv is null) return Result<InvoiceDto>.Failure(ErrorCodes.NotFound, "Invoice not found.");
-        return Result<InvoiceDto>.Success(new InvoiceDto(inv.Id, inv.SaleId, inv.InvoiceNumber, inv.Status, inv.IssuedAt, inv.TotalAmount, inv.AmountPaid, inv.BalanceDue));
+        return Result<InvoiceDto>.Success(new InvoiceDto(
+            inv.Id, inv.SaleId, inv.InvoiceNumber, inv.Status, inv.IssuedAt, inv.DueAt, inv.VoidedAt,
+            inv.CreatedAt, inv.UpdatedAt, inv.TotalAmount, inv.AmountPaid, inv.BalanceDue));
     }
 
     public async Task<Result<IReadOnlyList<PaymentMethodDto>>> ListPaymentMethodsAsync(CancellationToken ct = default)
@@ -754,12 +792,19 @@ public sealed class SaleService : ISaleService
             sale.AmountPaid,
             sale.BalanceDue,
             sale.CompletedAt,
+            sale.VoidedAt,
+            sale.CreatedAt,
+            sale.UpdatedAt,
             sale.Notes,
             sale.Lines.Select(l => new SaleLineDto(l.Id, l.PartId, l.Description, l.Quantity, l.UnitPrice, l.UnitCost, l.Discount, l.LineTotal)).ToList(),
-            sale.Payments.OrderBy(p => p.PaidAt).Select(p => new PaymentDto(p.Id, p.Amount, p.MethodCode, p.PaidAt, p.IdempotencyKey, p.Status)).ToList(),
-            sale.Invoice is null ? null : new InvoiceDto(sale.Invoice.Id, sale.Invoice.SaleId, sale.Invoice.InvoiceNumber, sale.Invoice.Status, sale.Invoice.IssuedAt, sale.Invoice.TotalAmount, sale.Invoice.AmountPaid, sale.Invoice.BalanceDue),
+            sale.Payments.OrderBy(p => p.PaidAt).Select(p => new PaymentDto(p.Id, p.Amount, p.MethodCode, p.PaidAt, p.CreatedAt, p.IdempotencyKey, p.Status)).ToList(),
+            sale.Invoice is null ? null : new InvoiceDto(
+                sale.Invoice.Id, sale.Invoice.SaleId, sale.Invoice.InvoiceNumber, sale.Invoice.Status,
+                sale.Invoice.IssuedAt, sale.Invoice.DueAt, sale.Invoice.VoidedAt,
+                sale.Invoice.CreatedAt, sale.Invoice.UpdatedAt,
+                sale.Invoice.TotalAmount, sale.Invoice.AmountPaid, sale.Invoice.BalanceDue),
             sale.Returns.OrderByDescending(r => r.CompletedAt).Select(r => new SaleReturnDto(
-                r.Id, r.ReturnNumber, r.CompletedAt, r.RefundAmount,
+                r.Id, r.ReturnNumber, r.CompletedAt, r.RefundedAt, r.RefundAmount, r.CreatedAt,
                 r.Lines.Select(l => new SaleReturnLineDto(l.Id, l.SaleLineId, l.PartId, l.Quantity)).ToList())).ToList());
     }
 }

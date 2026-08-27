@@ -599,7 +599,8 @@ Business Transaction
 
 **What to build:**
 
-- `JournalEntry`: OrganizationId, BranchId (nullable or required—default: branch of source transaction), PeriodId, EntryNumber, EntryDate, PostedAt, PostedByUserId, Memo, Status (`Posted` only for v1—no draft journals unless needed for manual entries), SourceType, SourceId, optional ReversesJournalEntryId.
+- `JournalEntry`: OrganizationId, BranchId (nullable or required—default: branch of source transaction), PeriodId, EntryNumber, **EntryDate** (business posting date from source event—see `docs/accounting.md`; never use `CreatedAt` alone), PostedAt, PostedByUserId, Memo, Status (`Posted` only for v1—no draft journals unless needed for manual entries), SourceType, SourceId, optional ReversesJournalEntryId.
+- Display of financial timestamps uses `Organization.TimeZoneId` (IANA); storage remains UTC `DateTimeOffset`.
 - `JournalLine`: JournalEntryId, AccountId, Debit, Credit, Description; exactly one of Debit/Credit > 0 per line (other zero).
 - Unique index `(OrganizationId, SourceType, SourceId)` so duplicate source events never create duplicate accounting entries.
 - Manual journal entry command for adjustments (still must balance; still gets a synthetic SourceType `ManualJournal` + new SourceId).

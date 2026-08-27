@@ -7,6 +7,8 @@ public class Organization : AuditableEntity
     public string Name { get; set; } = string.Empty;
     public string? BusinessInfo { get; set; }
     public string Status { get; set; } = "Active";
+    /// <summary>IANA timezone id used for displaying business timestamps (e.g. Asia/Manila).</summary>
+    public string TimeZoneId { get; set; } = "Asia/Manila";
     public ICollection<Branch> Branches { get; set; } = new List<Branch>();
 }
 
