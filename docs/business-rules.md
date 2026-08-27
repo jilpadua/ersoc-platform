@@ -22,11 +22,15 @@ Part quantity on hand is the sum of append-only `StockLedgerEntries` for `(Organ
 
 ## Purchase orders
 
-Statuses: `DRAFT` → `ORDERED` → `PARTIALLY_RECEIVED` / `RECEIVED`. Cancel allowed from `DRAFT` or `ORDERED` only (not after receiving has begun). Receive quantities cannot exceed remaining ordered quantity.
+Statuses: `DRAFT` → `ORDERED` → `PARTIALLY_RECEIVED` / `RECEIVED`. Cancel allowed from `DRAFT` or `ORDERED` only (not after receiving has begun). Receive quantities cannot exceed remaining ordered quantity. Each receive call creates a `PurchaseReceive` header; stock ledger references that receive id (`ReferenceType = PurchaseReceive`).
 
 ## Sales / POS
 
-Part sales only (no repair checkout in Phase 3). Completing a sale validates stock, writes `Sale`/`SaleLine`, creates invoice 1:1, deducts inventory, and may accept an initial payment. `TaxTotal` is always `0`. Payment methods are org-seeded (`CASH`, `CARD`, `TRANSFER`). Payments require a unique `(OrganizationId, IdempotencyKey)`. Partial payments allowed. Returns cannot exceed sold quantity minus already returned; restock and optional refund payment. Void only for unpaid completed sales (restocks).
+Part sales only (no repair checkout in Phase 3). Completing a sale validates stock (re-check inside a DB transaction), writes `Sale`/`SaleLine` (with `UnitCost` snapshotted from `Part.UnitCost`), creates invoice 1:1, deducts inventory, and may accept an initial payment in the same transaction. `TaxTotal` is always `0`. Payment methods are org-seeded (`CASH`, `CARD`, `TRANSFER`). Payments require a unique `(OrganizationId, IdempotencyKey)`. Partial payments allowed; overpay rejected. `AmountPaid` / `BalanceDue` track `Sum(Payments.Amount)` (refunds are negative payment rows).
+
+Returns: quantities cannot exceed sold minus already returned (duplicate lines in one request are aggregated before validation); restock via `SaleReturn` ledger; optional refund payment. **Void only for unpaid completed sales with no returns** (restocks full sold qty). A sale that has returns cannot be voided.
+
+See `docs/accounting.md` for Phase 4 source mapping.
 
 ## Authorization
 

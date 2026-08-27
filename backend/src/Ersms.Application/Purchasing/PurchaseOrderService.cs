@@ -289,6 +289,15 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
         var can = PurchaseOrderWorkflow.CanReceive(po.Status);
         if (!can.IsSuccess) return Result<PurchaseOrderDetailDto>.Failure(can.ErrorCode!, can.ErrorMessage!);
 
+        var receive = new PurchaseReceive
+        {
+            OrganizationId = orgId,
+            PurchaseOrderId = po.Id,
+            ReceivedAt = DateTimeOffset.UtcNow,
+            ReceivedByUserId = _user.UserId!.Value
+        };
+        _db.PurchaseReceives.Add(receive);
+
         foreach (var recv in request.Lines)
         {
             if (recv.Quantity <= 0)
@@ -310,8 +319,8 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
                 PartId = line.PartId,
                 QuantityDelta = recv.Quantity,
                 EntryType = StockEntryTypes.PurchaseReceive,
-                ReferenceType = "PurchaseOrder",
-                ReferenceId = po.Id,
+                ReferenceType = "PurchaseReceive",
+                ReferenceId = receive.Id,
                 Reason = $"Received on {po.PoNumber}",
                 ActorUserId = _user.UserId!.Value
             });
@@ -320,7 +329,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
         po.Status = PurchaseOrderWorkflow.StatusAfterReceive(po.Lines);
         po.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
-        await _audit.WriteAsync("receive", "PurchaseOrder", po.Id.ToString(), null, new { po.Status }, ct);
+        await _audit.WriteAsync("receive", "PurchaseOrder", po.Id.ToString(), null, new { po.Status, ReceiveId = receive.Id }, ct);
         return Result<PurchaseOrderDetailDto>.Success((await LoadDetailAsync(po.Id, ct))!);
     }
 

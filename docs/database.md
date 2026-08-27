@@ -27,13 +27,17 @@ Audit: `AuditLogs` (append-only)
 
 Inventory: `Parts`, `StockLedgerEntries` (append-only quantity deltas)
 
-Purchasing: `Suppliers`, `PurchaseOrders`, `PurchaseOrderLines`
+Purchasing: `Suppliers`, `PurchaseOrders`, `PurchaseOrderLines`, `PurchaseReceives` (one row per receive API call; ledger `ReferenceId`)
 
 ## Phase 3 tables
 
-Sales: `PaymentMethods`, `Sales`, `SaleLines`, `Invoices`, `Payments`, `SaleReturns`, `SaleReturnLines`
+Sales: `PaymentMethods`, `Sales`, `SaleLines` (includes `UnitCost` snapshot at sale), `Invoices`, `Payments`, `SaleReturns`, `SaleReturnLines`
 
-`Parts.UnitPrice` (sell price) added; `UnitCost` remains purchase/cost.
+`Parts.UnitPrice` (sell price); `Parts.UnitCost` / `SaleLines.UnitCost` for COGS prep (see `accounting.md`).
+
+## Phase 3 hardening migration
+
+`Phase3HardeningAccountingPrep`: adds `SaleLines.UnitCost`, `PurchaseReceives` table.
 
 ## Critical constraints
 

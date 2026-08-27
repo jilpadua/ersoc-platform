@@ -76,16 +76,33 @@ public class InventoryPurchasingApiTests : IClassFixture<ApiFactory>
 
         var receive = await _client.PostAsJsonAsync($"/api/v1/purchase-orders/{poId}/receive", new
         {
-            lines = new[] { new { lineId, quantity = 10m } }
+            lines = new[] { new { lineId, quantity = 4m } }
         });
         receive.EnsureSuccessStatusCode();
-        var received = await receive.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
+        (await receive.Content.ReadFromJsonAsync<JsonElement>(JsonOptions)).GetProperty("status").GetString().Should().Be("PARTIALLY_RECEIVED");
+
+        var receive2 = await _client.PostAsJsonAsync($"/api/v1/purchase-orders/{poId}/receive", new
+        {
+            lines = new[] { new { lineId, quantity = 6m } }
+        });
+        receive2.EnsureSuccessStatusCode();
+        var received = await receive2.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
         received.GetProperty("status").GetString().Should().Be("RECEIVED");
 
         var partGet = await _client.GetAsync($"/api/v1/parts/{partId}");
         partGet.EnsureSuccessStatusCode();
         (await partGet.Content.ReadFromJsonAsync<JsonElement>(JsonOptions))
             .GetProperty("quantityOnHand").GetDecimal().Should().Be(12);
+
+        var ledger = await (await _client.GetAsync($"/api/v1/parts/{partId}/ledger?pageSize=50")).Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
+        var receiveEntries = ledger.GetProperty("items").EnumerateArray()
+            .Where(e => e.GetProperty("entryType").GetString() == "PurchaseReceive")
+            .ToList();
+        receiveEntries.Should().HaveCount(2);
+        receiveEntries.Should().OnlyContain(e => e.GetProperty("referenceType").GetString() == "PurchaseReceive");
+        var receiveIds = receiveEntries.Select(e => e.GetProperty("referenceId").GetGuid()).Distinct().ToList();
+        receiveIds.Should().HaveCount(2);
+        receiveIds.Should().NotContain(poId);
 
         var dashboard = await _client.GetAsync("/api/v1/dashboard");
         dashboard.EnsureSuccessStatusCode();

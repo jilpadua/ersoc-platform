@@ -542,10 +542,10 @@ Record cost basis for COGS: use part cost fields available at sale time (snapsho
 
 #### Hardening exit checklist
 
-- [ ] Payment, balance, and invoice invariants verified (tests green)
-- [ ] Return/void/stock invariants verified (tests green)
-- [ ] SourceType/SourceId mapping table written into `docs/accounting.md` (or draft section)
-- [ ] No known critical integrity bugs blocking journal posting
+- [x] Payment, balance, and invoice invariants verified (tests green)
+- [x] Return/void/stock invariants verified (tests green)
+- [x] SourceType/SourceId mapping table written into `docs/accounting.md` (or draft section)
+- [x] No known critical integrity bugs blocking journal posting
 
 ---
 

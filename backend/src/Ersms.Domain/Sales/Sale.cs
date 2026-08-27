@@ -60,6 +60,8 @@ public class SaleLine : Entity
     public string Description { get; set; } = string.Empty;
     public decimal Quantity { get; set; }
     public decimal UnitPrice { get; set; }
+    /// <summary>Part unit cost snapshotted at sale completion for COGS.</summary>
+    public decimal UnitCost { get; set; }
     public decimal Discount { get; set; }
     public decimal LineTotal { get; set; }
 

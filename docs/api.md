@@ -56,13 +56,13 @@ On-hand quantity is **ledger-derived** (`SUM(StockLedgerEntries.QuantityDelta)` 
 | GET/POST | `/purchase-orders` | Optional `status` filter |
 | GET/PATCH | `/purchase-orders/{id}` | PATCH draft only |
 | POST | `/purchase-orders/{id}/submit` | DRAFT → ORDERED |
-| POST | `/purchase-orders/{id}/receive` | Posts ledger receive rows |
+| POST | `/purchase-orders/{id}/receive` | Creates `PurchaseReceive`; ledger refs that id |
 | POST | `/purchase-orders/{id}/cancel` | DRAFT or ORDERED only |
-| GET/POST | `/sales` | Optional `status`, `unpaidOnly` |
+| GET/POST | `/sales` | Optional `status`, `unpaidOnly`; lines include `unitCost` |
 | GET | `/sales/{id}` | Lines, payments, invoice, returns |
 | POST | `/sales/{id}/payments` | Idempotent; `Idempotency-Key` header or body |
 | POST | `/sales/{id}/returns` | Restock + optional refund |
-| POST | `/sales/{id}/void` | Unpaid completed only |
+| POST | `/sales/{id}/void` | Unpaid completed only; rejected if returns exist |
 | GET | `/invoices` | Optional `unpaidOnly` |
 | GET | `/invoices/{id}` | Read-only |
 | GET | `/payment-methods` | Seeded CASH/CARD/TRANSFER |
@@ -79,4 +79,4 @@ On-hand quantity is **ledger-derived** (`SUM(StockLedgerEntries.QuantityDelta)` 
 
 ## Sales (Phase 3)
 
-Creating a sale completes immediately: validates stock, writes sale lines, posts negative `Sale` ledger rows, creates a 1:1 invoice (`TaxTotal = 0`), and optionally records the first payment. Payments require a unique org-scoped idempotency key; replays return the same sale state without double-posting.
+Creating a sale completes immediately: validates stock (transactional re-check), writes sale lines with `unitCost` snapshot, posts negative `Sale` ledger rows, creates a 1:1 invoice (`TaxTotal = 0`), and optionally records the first payment in the same transaction. Payments require a unique org-scoped idempotency key; replays return the same sale state without double-posting. Void is refused if the sale already has returns.
