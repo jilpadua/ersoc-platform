@@ -125,6 +125,71 @@ public class AuthAndRepairApiTests : IClassFixture<ApiFactory>
     }
 
     [Fact]
+    public async Task Repairing_allowed_next_prefers_testing_and_single_history_per_patch()
+    {
+        await LoginAsync();
+
+        var customerRes = await _client.PostAsJsonAsync("/api/v1/customers", new
+        {
+            name = "Parts Loop Customer",
+            phone = "09171112233",
+            email = "parts-loop@example.com"
+        });
+        customerRes.EnsureSuccessStatusCode();
+        var customerId = (await customerRes.Content.ReadFromJsonAsync<JsonElement>(JsonOptions)).GetProperty("id").GetGuid();
+
+        var deviceRes = await _client.PostAsJsonAsync("/api/v1/devices", new
+        {
+            customerId,
+            deviceType = "Phone",
+            brand = "Samsung",
+            model = "A54"
+        });
+        deviceRes.EnsureSuccessStatusCode();
+        var deviceId = (await deviceRes.Content.ReadFromJsonAsync<JsonElement>(JsonOptions)).GetProperty("id").GetGuid();
+
+        var repairRes = await _client.PostAsJsonAsync("/api/v1/repairs", new
+        {
+            customerId,
+            deviceId,
+            reportedProblem = "Battery swell"
+        });
+        repairRes.EnsureSuccessStatusCode();
+        var repairId = (await repairRes.Content.ReadFromJsonAsync<JsonElement>(JsonOptions)).GetProperty("id").GetGuid();
+
+        foreach (var code in new[] { "DIAGNOSIS", "APPROVED", "REPAIRING" })
+        {
+            var step = await _client.PatchAsJsonAsync($"/api/v1/repairs/{repairId}/status", new { statusCode = code, reason = $"to {code}" });
+            step.EnsureSuccessStatusCode();
+        }
+
+        var detail = await _client.GetAsync($"/api/v1/repairs/{repairId}");
+        detail.EnsureSuccessStatusCode();
+        var body = await detail.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
+        body.GetProperty("statusCode").GetString().Should().Be("REPAIRING");
+
+        var allowed = body.GetProperty("allowedNextStatuses").EnumerateArray()
+            .Select(x => x.GetProperty("code").GetString())
+            .ToList();
+        allowed[0].Should().Be("TESTING");
+        allowed.Should().Contain("WAITING_FOR_PARTS");
+        allowed.Should().Contain("CANCELLED");
+
+        var historyBefore = body.GetProperty("statusHistory").GetArrayLength();
+        var patch = await _client.PatchAsJsonAsync($"/api/v1/repairs/{repairId}/status", new
+        {
+            statusCode = "WAITING_FOR_PARTS",
+            reason = "Need board"
+        });
+        patch.EnsureSuccessStatusCode();
+        var after = await patch.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
+        after.GetProperty("statusCode").GetString().Should().Be("WAITING_FOR_PARTS");
+        after.GetProperty("statusHistory").GetArrayLength().Should().Be(historyBefore + 1);
+        after.GetProperty("allowedNextStatuses").EnumerateArray().First().GetProperty("code").GetString()
+            .Should().Be("REPAIRING");
+    }
+
+    [Fact]
     public async Task Customer_update_deactivate_and_allowed_repair_statuses()
     {
         await LoginAsync();

@@ -35,11 +35,12 @@ export default function RepairDetailPage() {
   const [reason, setReason] = useState("");
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   async function load() {
     const r = await api<RepairDetail>(`/api/v1/repairs/${id}`);
     setRepair(r);
-    setNextStatus(r.allowedNextStatuses[0]?.code ?? "");
+    setNextStatus("");
   }
 
   useEffect(() => {
@@ -49,16 +50,21 @@ export default function RepairDetailPage() {
 
   async function changeStatus(e: FormEvent) {
     e.preventDefault();
+    if (!nextStatus || submitting) return;
     setError(null);
+    setSubmitting(true);
     try {
       await api(`/api/v1/repairs/${id}/status`, {
         method: "PATCH",
         body: JSON.stringify({ statusCode: nextStatus, reason }),
       });
       setReason("");
+      setNextStatus("");
       await load();
     } catch (err: unknown) {
       setError(err instanceof ApiClientError ? err.message : "Failed");
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -102,15 +108,34 @@ export default function RepairDetailPage() {
       <form onSubmit={changeStatus} className="mt-6 flex flex-wrap gap-2 rounded-lg border border-slate-200 bg-white p-4">
         {canAdvance ? (
           <>
-            <select required value={nextStatus} onChange={(e) => setNextStatus(e.target.value)} className="rounded-md border border-slate-300 px-3 py-2 text-sm">
+            <select
+              required
+              value={nextStatus}
+              onChange={(e) => setNextStatus(e.target.value)}
+              disabled={submitting}
+              className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+            >
+              <option value="">Select next status…</option>
               {repair.allowedNextStatuses.map((s) => (
                 <option key={s.code} value={s.code}>{s.name}</option>
               ))}
             </select>
-            <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason (optional)" className="min-w-[200px] flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm" />
-            <button className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white">Update status</button>
+            <input
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Reason (optional)"
+              disabled={submitting}
+              className="min-w-[200px] flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
+            />
+            <button
+              type="submit"
+              disabled={submitting || !nextStatus}
+              className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+            >
+              {submitting ? "Updating…" : "Update status"}
+            </button>
             <p className="w-full text-xs text-slate-500">
-              Only the next allowed workflow steps are listed (e.g. Received → Diagnosis or Cancelled).
+              Choose the next step explicitly. Only allowed workflow transitions are listed.
             </p>
           </>
         ) : (
