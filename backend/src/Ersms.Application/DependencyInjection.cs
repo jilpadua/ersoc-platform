@@ -1,4 +1,5 @@
 using System.Reflection;
+using Ersms.Application.Accounting;
 using Ersms.Application.Audit;
 using Ersms.Application.Customers;
 using Ersms.Application.Dashboard;
@@ -32,6 +33,14 @@ public static class DependencyInjection
         services.AddScoped<ISupplierService, SupplierService>();
         services.AddScoped<IPurchaseOrderService, PurchaseOrderService>();
         services.AddScoped<ISaleService, SaleService>();
+
+        services.AddScoped<IAccountingPostingService, AccountingPostingService>();
+        services.AddScoped<IAccountService, AccountService>();
+        services.AddScoped<IAccountingPeriodService, AccountingPeriodService>();
+        services.AddScoped<IJournalQueryService, JournalQueryService>();
+        services.AddScoped<IApService, ApService>();
+        services.AddScoped<IExpenseService, ExpenseService>();
+        services.AddScoped<IAccountingReportService, AccountingReportService>();
 
         return services;
     }

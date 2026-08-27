@@ -1,64 +1,82 @@
-# Accounting (Phase 3 Hardening / Phase 4 prep)
+# Accounting
 
-This document records **stable accounting source identifiers** and cost rules so Phase 4 journal posting can map business events without inventing IDs.
-
-Full double-entry posting (chart of accounts, journals, reports) is **Phase 4**. This file is the source-mapping contract.
+Double-entry accounting for ERSMS (Phase 4). Operational sales/purchasing remain sources of truth for stock and invoices; the GL is the books of record.
 
 ## SourceType / SourceId map
 
 | Business event | SourceType | SourceId | Notes |
 | -------------- | ---------- | -------- | ----- |
-| Sale completed | `SaleCompleted` | `Sale.Id` | Post revenue, AR/cash split, COGS/inventory |
-| Payment succeeded | `PaymentSucceeded` | `Payment.Id` | Positive amount, `Status = Succeeded` |
-| Sale return completed | `SaleReturnCompleted` | `SaleReturn.Id` | Reverse revenue/COGS; refunds are separate payments |
-| Sale voided | `SaleVoided` | `Sale.Id` | Only unpaid sales with **no** returns |
-| PO receive batch | `PurchaseReceived` | `PurchaseReceive.Id` | One receive header per Receive API call |
-| Stock adjustment | `StockAdjusted` | `StockLedgerEntry.Id` | Manual adjustment ledger row |
+| Sale completed | `SaleCompleted` | `Sale.Id` | Revenue, cash/AR split, COGS/inventory |
+| Payment succeeded | `PaymentSucceeded` | `Payment.Id` | Subsequent payments only (checkout cash is in sale journal) |
+| Sale return completed | `SaleReturnCompleted` | `SaleReturn.Id` | Reverse revenue/COGS; refund cash and/or AR |
+| Sale voided | `SaleVoided` | `Sale.Id` | Reversal of original sale journal |
+| PO receive batch | `PurchaseReceived` | `PurchaseReceive.Id` | Inventory Dr / AP Cr; creates `SupplierBill` |
+| Stock adjustment | `StockAdjusted` | `StockLedgerEntry.Id` | Value = `Part.UnitCost × qty delta` |
+| Supplier payment | `SupplierPayment` | `SupplierPayment.Id` | AP Dr / cash-bank Cr |
+| Expense posted | `ExpensePosted` | `Expense.Id` | Posted on approve (MVP) |
+| Expense voided | `ExpenseVoided` | `Expense.Id` | Reversing entry |
+| Manual journal | `ManualJournal` | new Guid | Balanced adjustment |
+| Opening balance | `OpeningBalance` | new Guid | Cutover balances |
 
-Posting must be **idempotent** on `(OrganizationId, SourceType, SourceId)`.
+Posting is **idempotent** on `(OrganizationId, SourceType, SourceId)`.
 
 ## COGS cost basis
 
 - At sale completion, each `SaleLine.UnitCost` is snapshotted from `Part.UnitCost`.
-- Phase 4 COGS uses **`SaleLine.UnitCost × quantity`**, not the live part cost at posting time.
+- COGS uses **`SaleLine.UnitCost × quantity`**, not live part cost at posting time.
 - Purchase valuation for receive journals uses `PurchaseOrderLine.UnitCost`.
 
-## Purchase receive identity
+## Chart of accounts (seed defaults)
 
-- Each `POST .../purchase-orders/{id}/receive` creates a `PurchaseReceive` row.
-- Stock ledger rows use `ReferenceType = "PurchaseReceive"` and `ReferenceId = PurchaseReceive.Id`.
-- Do **not** use `PurchaseOrder.Id` as the accounting SourceId (partial receives would collide).
+| Code | Name | Mapping key |
+| ---- | ---- | ----------- |
+| 1000 | Cash | `Cash` |
+| 1010 | Bank | `Bank` |
+| 1020 | Card Clearing | `CardClearing` |
+| 1100 | Accounts Receivable | `AccountsReceivable` |
+| 1200 | Inventory | `InventoryAsset` |
+| 2000 | Accounts Payable | `AccountsPayable` |
+| 3000 | Opening Equity | `OpeningEquity` |
+| 4000 | Sales Revenue | `SalesRevenue` |
+| 5000 | Cost of Goods Sold | `Cogs` |
+| 5100 | Inventory Adjustment | `InventoryAdjustment` |
+| 6000 | Operating Expense | `OperatingExpense` |
 
-## Payments and balances
+Mappings live in `AccountingAccountMappings` (Owner/Admin upsert).
 
-- `Sale.AmountPaid` / `BalanceDue` (and invoice mirrors) are maintained to match `Sum(Payments.Amount)` for that sale (refunds are negative amounts with `Status = Refunded`).
-- Duplicate `(OrganizationId, IdempotencyKey)` never creates a second payment.
+## Periods
 
-## Void vs return
+Monthly `AccountingPeriod` rows per org (`Open` / `Closed`). Journals post only into an **Open** period that covers `EntryDate`. Seed generates the current calendar year.
 
-- Void is allowed only for unpaid completed sales **with no returns**.
-- If any return exists, void is rejected (conflict). Further stock correction uses returns only.
-- This keeps restock and Phase 4 reversal sources unambiguous (return XOR void).
+## Journal rules
 
-## Stock on sale complete
-
-- Completing a sale re-checks on-hand inside a DB transaction (relational) before posting negative `Sale` ledger rows.
-- Insufficient stock → conflict; sale is not committed.
+- Sum(debits) == sum(credits); money `decimal(18,2)`.
+- Posted entries are immutable; corrections use reversing journals (`ReversesJournalEntryId`).
+- `EntryDate` uses business stamps below (not `CreatedAt` alone when a stamp exists).
 
 ## Business timestamps and posting dates
 
-All financial timestamps are stored as `DateTimeOffset` (UTC). Display uses `Organization.TimeZoneId` (IANA, default `Asia/Manila`).
-
-| Event | Business timestamp for Phase 4 journal `EntryDate` |
-| ----- | -------------------------------------------------- |
-| Sale completed / invoice issued | `Invoice.IssuedAt` (= `Sale.CompletedAt`) |
+| Event | Journal `EntryDate` |
+| ----- | ------------------- |
+| Sale completed | `Sale.CompletedAt` / `Invoice.IssuedAt` |
 | Payment succeeded | `Payment.PaidAt` |
 | Sale return | `SaleReturn.CompletedAt` |
-| Refund payment | `SaleReturn.RefundedAt` / refund `Payment.PaidAt` |
-| Sale voided | `Sale.VoidedAt` / `Invoice.VoidedAt` |
+| Sale voided | `Sale.VoidedAt` |
 | PO receive | `PurchaseReceive.ReceivedAt` |
-| Stock adjustment | `StockLedgerEntry.CreatedAt` (business time of adjustment) |
+| Stock adjustment | `StockLedgerEntry.CreatedAt` |
+| Supplier payment | `SupplierPayment.PaidAt` |
+| Expense | `Expense.ExpenseDate` |
 
-**Do not** use `CreatedAt` alone as the accounting posting date when a dedicated business stamp exists.
+Display uses `Organization.TimeZoneId` (default `Asia/Manila`). Aging uses `DueAt ?? IssuedAt`.
 
-`Invoice.DueAt` is nullable (no payment-terms UI yet). Aging should use `DueAt ?? IssuedAt`.
+## Permissions
+
+`accounting.read`, `accounting.write`, `accounting.post`, `accounting.periods`, `accounting.approve_expense`, `accounting.ap`.
+
+## Reports (API)
+
+Under `/api/v1/accounting/reports`: general-ledger, trial-balance, profit-and-loss, balance-sheet, cash-flow (direct cash lines), ar-aging, ap-aging, customer-statement, reconciliation.
+
+## Domain events (Phase 5 handlers)
+
+Payload stubs: `JournalEntryPosted`, `ExpenseApproved`, `SupplierPaymentRecorded`, `AccountingPeriodClosed` — produced conceptually when those actions succeed; outbox/handlers arrive in Phase 5.

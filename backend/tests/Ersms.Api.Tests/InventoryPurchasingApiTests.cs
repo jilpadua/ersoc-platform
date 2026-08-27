@@ -110,8 +110,8 @@ public class InventoryPurchasingApiTests : IClassFixture<ApiFactory>
         dash.GetProperty("lowStockParts").GetInt32().Should().BeGreaterThanOrEqualTo(0);
         dash.TryGetProperty("todaySalesTotal", out _).Should().BeTrue();
         dash.TryGetProperty("unpaidInvoiceCount", out _).Should().BeTrue();
-        dash.GetProperty("unavailable").TryGetProperty("expenses", out _).Should().BeTrue();
-        dash.GetProperty("unavailable").TryGetProperty("sales", out _).Should().BeFalse();
+        dash.TryGetProperty("todayExpenseTotal", out _).Should().BeTrue();
+        dash.TryGetProperty("cashAndBankBalance", out _).Should().BeTrue();
     }
 
     private async Task LoginAsync()

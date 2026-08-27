@@ -43,6 +43,16 @@ Financial timestamps: `Organizations.TimeZoneId`; `Sales.VoidedAt`; `Invoices.Du
 
 `FinancialTimestampsAndOrgTimezone`: org timezone + void/due/refund/payment created stamps.
 
+## Phase 4 tables
+
+Accounting: `Accounts`, `AccountingPeriods`, `JournalEntries` (unique org+source), `JournalLines`, `AccountingAccountMappings`
+
+AP: `SupplierBills`, `SupplierPayments` (idempotency key), `SupplierPaymentAllocations`
+
+Expenses: `ExpenseCategories`, `Expenses`, `ExpenseAttachments`
+
+Migration: `AddAccounting`. Money columns use `numeric(18,2)`.
+
 ## Critical constraints
 
 - Unique `(OrganizationId, RepairNumber)` on `Repairs`
@@ -50,9 +60,11 @@ Financial timestamps: `Organizations.TimeZoneId`; `Sales.VoidedAt`; `Invoices.Du
 - Unique `(OrganizationId, SaleNumber)` on `Sales`
 - Unique `(OrganizationId, InvoiceNumber)` on `Invoices`
 - Unique `SaleId` on `Invoices` (1:1 with sale)
-- Unique `(OrganizationId, IdempotencyKey)` on `Payments`
+- Unique `(OrganizationId, IdempotencyKey)` on `Payments` and `SupplierPayments`
 - Unique `(OrganizationId, ReturnNumber)` on `SaleReturns`
 - Unique `(OrganizationId, Sku)` on `Parts`
-- Unique `(OrganizationId, Code)` on roles, repair status definitions, and payment methods
+- Unique `(OrganizationId, Code)` on roles, repair status definitions, payment methods, and accounts
+- Unique `(OrganizationId, SourceType, SourceId)` on `JournalEntries`
+- Unique `(OrganizationId, MappingKey)` on `AccountingAccountMappings`
 - Unique `(OrganizationId, NormalizedEmail)` on users
-- Indexes on customer phone/name, device serial/IMEI, stock ledger `(OrganizationId, BranchId, PartId)`, audit timestamp
+- Indexes on customer phone/name, device serial/IMEI, stock ledger `(OrganizationId, BranchId, PartId)`, audit timestamp, journal lines by account

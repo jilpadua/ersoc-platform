@@ -1,4 +1,6 @@
+using Ersms.Application.Accounting;
 using Ersms.Application.Common;
+using Ersms.Domain.Accounting;
 using Ersms.Domain.Inventory;
 using Ersms.SharedKernel;
 using FluentValidation;
@@ -77,6 +79,7 @@ public sealed class PartService : IPartService
     private readonly IApplicationDbContext _db;
     private readonly ICurrentUser _user;
     private readonly IAuditService _audit;
+    private readonly IAccountingPostingService _posting;
     private readonly IValidator<CreatePartRequest> _validator;
     private readonly IValidator<AdjustStockRequest> _adjustValidator;
 
@@ -84,12 +87,14 @@ public sealed class PartService : IPartService
         IApplicationDbContext db,
         ICurrentUser user,
         IAuditService audit,
+        IAccountingPostingService posting,
         IValidator<CreatePartRequest> validator,
         IValidator<AdjustStockRequest> adjustValidator)
     {
         _db = db;
         _user = user;
         _audit = audit;
+        _posting = posting;
         _validator = validator;
         _adjustValidator = adjustValidator;
     }
@@ -254,7 +259,7 @@ public sealed class PartService : IPartService
         if (!check.IsSuccess)
             return Result<PartDto>.Failure(check.ErrorCode!, check.ErrorMessage!);
 
-        _db.StockLedgerEntries.Add(new StockLedgerEntry
+        var ledger = new StockLedgerEntry
         {
             OrganizationId = orgId,
             BranchId = branch.Value,
@@ -263,8 +268,41 @@ public sealed class PartService : IPartService
             EntryType = StockEntryTypes.Adjustment,
             Reason = request.Reason?.Trim(),
             ActorUserId = _user.UserId!.Value
-        });
-        await _db.SaveChangesAsync(ct);
+        };
+        _db.StockLedgerEntries.Add(ledger);
+
+        await using var tx = await _db.BeginTransactionAsync(ct);
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+
+            var valueDelta = Math.Round(entity.UnitCost * request.QuantityDelta, 2);
+            if (valueDelta != 0)
+            {
+                var maps = await AccountingLineBuilders.LoadMapsAsync(_db, orgId, ct);
+                var lines = AccountingLineBuilders.StockAdjusted(maps, valueDelta);
+                if (lines.Count > 0)
+                {
+                    var journal = await _posting.PostAsync(new PostJournalRequest(
+                        orgId, branch, ledger.CreatedAt,
+                        AccountingSourceTypes.StockAdjusted, ledger.Id,
+                        $"Stock adjust {entity.Sku}", lines), ct);
+                    if (!journal.IsSuccess)
+                    {
+                        await tx.RollbackAsync(ct);
+                        return Result<PartDto>.Failure(journal.ErrorCode!, journal.ErrorMessage!);
+                    }
+                }
+            }
+
+            await tx.CommitAsync(ct);
+        }
+        catch
+        {
+            await tx.RollbackAsync(ct);
+            throw;
+        }
+
         await _audit.WriteAsync("adjust", "Part", id.ToString(), new { onHand }, new { quantityOnHand = check.Value, request.QuantityDelta }, ct);
         return Result<PartDto>.Success(ToDto(entity, check.Value));
     }

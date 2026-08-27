@@ -86,6 +86,7 @@ public static class DependencyInjection
         await EnsurePermissionsSyncedAsync(db, logger);
         await EnsurePaymentMethodsSyncedAsync(db, logger);
         await EnsureOrganizationTimeZonesSyncedAsync(db, logger);
+        await AccountingSeed.EnsureForAllOrganizationsAsync(db, logger);
 
         if (await db.Organizations.AnyAsync())
             return;
@@ -122,13 +123,16 @@ public static class DependencyInjection
                 Permissions.DashboardRead, Permissions.AuditRead,
                 Permissions.InventoryRead, Permissions.InventoryWrite,
                 Permissions.PurchasingRead, Permissions.PurchasingWrite,
-                Permissions.SalesRead, Permissions.SalesWrite, Permissions.SalesRefund
+                Permissions.SalesRead, Permissions.SalesWrite, Permissions.SalesRefund,
+                Permissions.AccountingRead, Permissions.AccountingWrite, Permissions.AccountingPost,
+                Permissions.AccountingPeriods, Permissions.AccountingApproveExpense, Permissions.AccountingAp
             ],
             [RoleCodes.Cashier] =
             [
                 Permissions.CustomersRead, Permissions.CustomersWrite,
                 Permissions.DevicesRead, Permissions.RepairsRead, Permissions.DashboardRead,
-                Permissions.SalesRead, Permissions.SalesWrite, Permissions.SalesRefund
+                Permissions.SalesRead, Permissions.SalesWrite, Permissions.SalesRefund,
+                Permissions.AccountingRead
             ],
             [RoleCodes.Technician] =
             [
@@ -193,6 +197,9 @@ public static class DependencyInjection
 
         await db.SaveChangesAsync();
 
+        await AccountingSeed.EnsureForOrganizationAsync(db, org.Id);
+        await db.SaveChangesAsync();
+
         var email = config["Seed:OwnerEmail"] ?? "owner@ersms.local";
         var password = config["Seed:OwnerPassword"] ?? "Owner123!";
         var owner = new ApplicationUser
@@ -250,11 +257,14 @@ public static class DependencyInjection
         [
             Permissions.InventoryRead, Permissions.InventoryWrite,
             Permissions.PurchasingRead, Permissions.PurchasingWrite,
-            Permissions.SalesRead, Permissions.SalesWrite, Permissions.SalesRefund
+            Permissions.SalesRead, Permissions.SalesWrite, Permissions.SalesRefund,
+            Permissions.AccountingRead, Permissions.AccountingWrite, Permissions.AccountingPost,
+            Permissions.AccountingPeriods, Permissions.AccountingApproveExpense, Permissions.AccountingAp
         ]);
         await EnsureRolePerms(RoleCodes.Cashier,
         [
-            Permissions.SalesRead, Permissions.SalesWrite, Permissions.SalesRefund
+            Permissions.SalesRead, Permissions.SalesWrite, Permissions.SalesRefund,
+            Permissions.AccountingRead
         ]);
         await EnsureRolePerms(RoleCodes.InventoryStaff,
         [

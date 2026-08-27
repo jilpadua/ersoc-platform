@@ -1,3 +1,4 @@
+using Ersms.Domain.Accounting;
 using Ersms.Domain.Audit;
 using Ersms.Domain.Customers;
 using Ersms.Domain.Devices;
@@ -45,6 +46,17 @@ public interface IApplicationDbContext
     DbSet<Payment> Payments { get; }
     DbSet<SaleReturn> SaleReturns { get; }
     DbSet<SaleReturnLine> SaleReturnLines { get; }
+    DbSet<Account> Accounts { get; }
+    DbSet<AccountingPeriod> AccountingPeriods { get; }
+    DbSet<JournalEntry> JournalEntries { get; }
+    DbSet<JournalLine> JournalLines { get; }
+    DbSet<AccountingAccountMapping> AccountingAccountMappings { get; }
+    DbSet<SupplierBill> SupplierBills { get; }
+    DbSet<SupplierPayment> SupplierPayments { get; }
+    DbSet<SupplierPaymentAllocation> SupplierPaymentAllocations { get; }
+    DbSet<ExpenseCategory> ExpenseCategories { get; }
+    DbSet<Expense> Expenses { get; }
+    DbSet<ExpenseAttachment> ExpenseAttachments { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
     Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default);

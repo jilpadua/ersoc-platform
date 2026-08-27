@@ -1,4 +1,6 @@
+using Ersms.Application.Accounting;
 using Ersms.Application.Common;
+using Ersms.Domain.Accounting;
 using Ersms.Domain.Inventory;
 using Ersms.Domain.Purchasing;
 using Ersms.SharedKernel;
@@ -79,17 +81,20 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
     private readonly IApplicationDbContext _db;
     private readonly ICurrentUser _user;
     private readonly IAuditService _audit;
+    private readonly IAccountingPostingService _posting;
     private readonly IValidator<CreatePurchaseOrderRequest> _validator;
 
     public PurchaseOrderService(
         IApplicationDbContext db,
         ICurrentUser user,
         IAuditService audit,
+        IAccountingPostingService posting,
         IValidator<CreatePurchaseOrderRequest> validator)
     {
         _db = db;
         _user = user;
         _audit = audit;
+        _posting = posting;
         _validator = validator;
     }
 
@@ -298,6 +303,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
         };
         _db.PurchaseReceives.Add(receive);
 
+        decimal inventoryValue = 0;
         foreach (var recv in request.Lines)
         {
             if (recv.Quantity <= 0)
@@ -312,6 +318,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
                 return Result<PurchaseOrderDetailDto>.Failure(ErrorCodes.Validation, "Cannot receive more than remaining ordered quantity.");
 
             line.QuantityReceived += recv.Quantity;
+            inventoryValue += Math.Round(recv.Quantity * line.UnitCost, 2);
             _db.StockLedgerEntries.Add(new StockLedgerEntry
             {
                 OrganizationId = orgId,
@@ -328,7 +335,55 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
 
         po.Status = PurchaseOrderWorkflow.StatusAfterReceive(po.Lines);
         po.UpdatedAt = DateTimeOffset.UtcNow;
-        await _db.SaveChangesAsync(ct);
+
+        await using var tx = await _db.BeginTransactionAsync(ct);
+        try
+        {
+            if (inventoryValue > 0)
+            {
+                var billCount = await _db.SupplierBills.CountAsync(b => b.OrganizationId == orgId, ct);
+                var bill = new SupplierBill
+                {
+                    OrganizationId = orgId,
+                    SupplierId = po.SupplierId,
+                    BranchId = po.BranchId,
+                    BillNumber = $"BILL-{(billCount + 1):D5}",
+                    SourceReceiveId = receive.Id,
+                    TotalAmount = inventoryValue,
+                    AmountPaid = 0,
+                    BalanceDue = inventoryValue,
+                    Status = SupplierBillStatuses.Open,
+                    IssuedAt = receive.ReceivedAt,
+                    Notes = $"Receive on {po.PoNumber}"
+                };
+                _db.SupplierBills.Add(bill);
+            }
+
+            await _db.SaveChangesAsync(ct);
+
+            if (inventoryValue > 0)
+            {
+                var maps = await AccountingLineBuilders.LoadMapsAsync(_db, orgId, ct);
+                var lines = AccountingLineBuilders.PurchaseReceived(maps, inventoryValue);
+                var journal = await _posting.PostAsync(new PostJournalRequest(
+                    orgId, po.BranchId, receive.ReceivedAt,
+                    AccountingSourceTypes.PurchaseReceived, receive.Id,
+                    $"PO receive {po.PoNumber}", lines), ct);
+                if (!journal.IsSuccess)
+                {
+                    await tx.RollbackAsync(ct);
+                    return Result<PurchaseOrderDetailDto>.Failure(journal.ErrorCode!, journal.ErrorMessage!);
+                }
+            }
+
+            await tx.CommitAsync(ct);
+        }
+        catch
+        {
+            await tx.RollbackAsync(ct);
+            throw;
+        }
+
         await _audit.WriteAsync("receive", "PurchaseOrder", po.Id.ToString(), null, new { po.Status, ReceiveId = receive.Id }, ct);
         return Result<PurchaseOrderDetailDto>.Success((await LoadDetailAsync(po.Id, ct))!);
     }

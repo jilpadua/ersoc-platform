@@ -116,7 +116,8 @@ public class SalesPosApiTests : IClassFixture<ApiFactory>
         var dash = await (await _client.GetAsync("/api/v1/dashboard")).Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
         dash.GetProperty("todaySalesTotal").GetDecimal().Should().BeGreaterThanOrEqualTo(0);
         dash.TryGetProperty("unpaidInvoiceCount", out _).Should().BeTrue();
-        dash.GetProperty("unavailable").TryGetProperty("sales", out _).Should().BeFalse();
+        dash.TryGetProperty("todayExpenseTotal", out _).Should().BeTrue();
+        dash.TryGetProperty("cashAndBankBalance", out _).Should().BeTrue();
     }
 
     [Fact]

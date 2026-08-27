@@ -80,7 +80,7 @@ docker-compose.yml          # PostgreSQL for local development
 | Audit | Append-only audit logs | All (via events/interceptors) |
 | Dashboard | Operational KPI read queries | Repairs, Inventory, Sales |
 
-Later phases add Accounting, Notifications, Reporting expansions, Employees extras, Settings expansions.
+Later phases add Notifications/outbox (Phase 5), Reporting expansions, Employees extras, Settings expansions. Accounting (Phase 4) posts balanced journals synchronously with sales/purchasing/expenses.
 
 ## Database strategy
 

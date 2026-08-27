@@ -72,11 +72,29 @@ On-hand quantity is **ledger-derived** (`SUM(StockLedgerEntries.QuantityDelta)` 
 | PATCH | `/repairs/{id}/status` | Workflow-gated |
 | PATCH | `/repairs/{id}/technician` | |
 | POST | `/repairs/{id}/notes` | |
-| GET | `/dashboard` | Includes `lowStockParts`, `todaySalesTotal`, `unpaidInvoiceCount` |
+| GET | `/dashboard` | Includes sales, unpaid invoices, `todayExpenseTotal`, `cashAndBankBalance` |
 | GET | `/search?q=` | |
 | GET | `/audit-logs` | |
 | GET | `/health` | |
+| GET/POST | `/accounts` | Chart of accounts |
+| PATCH | `/accounts/{id}` | Soft deactivate / rename |
+| GET/PUT | `/accounting/mappings` | GL mapping keys |
+| GET | `/accounting/periods` | |
+| POST | `/accounting/periods/generate` | `{ year }` |
+| POST | `/accounting/periods/{id}/close` | |
+| POST | `/accounting/periods/{id}/reopen` | |
+| GET | `/journals` | |
+| GET | `/journals/{id}` | |
+| GET | `/journals/by-source` | `sourceType`, `sourceId` |
+| POST | `/journals/manual` | Balanced manual entry |
+| POST | `/journals/opening-balances` | |
+| GET | `/supplier-bills` | |
+| POST | `/supplier-payments` | Idempotent AP payment |
+| GET/POST | `/expenses` | |
+| POST | `/expenses/{id}/approve` | Posts journal (MVP) |
+| POST | `/expenses/{id}/void` | |
+| GET | `/accounting/reports/*` | GL, TB, P&L, BS, cash-flow, AR/AP aging, reconciliation |
 
 ## Sales (Phase 3)
 
-Creating a sale completes immediately: validates stock (transactional re-check), writes sale lines with `unitCost` snapshot, posts negative `Sale` ledger rows, creates a 1:1 invoice (`TaxTotal = 0`, `issuedAt`/`createdAt`), and optionally records the first payment in the same transaction. Payments require a unique org-scoped idempotency key; replays return the same sale state without double-posting. Responses expose business stamps (`issuedAt`, `paidAt`, `voidedAt`, `refundedAt`, `dueAt`) plus audit `createdAt`/`updatedAt`. Void is refused if the sale already has returns.
+Creating a sale completes immediately: validates stock (transactional re-check), writes sale lines with `unitCost` snapshot, posts negative `Sale` ledger rows, creates a 1:1 invoice (`TaxTotal = 0`, `issuedAt`/`createdAt`), posts `SaleCompleted` journal (and includes checkout cash in that journal), and optionally records the first payment in the same transaction. Payments require a unique org-scoped idempotency key; subsequent payments also post `PaymentSucceeded`. Responses expose business stamps (`issuedAt`, `paidAt`, `voidedAt`, `refundedAt`, `dueAt`) plus audit `createdAt`/`updatedAt`. Void is refused if the sale already has returns.

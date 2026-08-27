@@ -63,7 +63,7 @@ A usable repair-shop system must keep money, stock, and books aligned; survive n
 | **1** | Core platform | Completed | Identity, org/branch, customers, devices, services, repairs, dashboard, audit, tests |
 | **2** | Inventory & purchasing | Completed | Stock ledger, suppliers, POs, receiving, low-stock metrics, tests |
 | **3** | Sales / POS | Completed | Sales, payments (idempotent), invoices, returns, inventory deduction, tests |
-| **4** | Accounting | Planned (next) | Chart of accounts, journals, AR/AP, expenses, balanced entries, reports, reconciliation, tests |
+| **4** | Accounting | Completed | Chart of accounts, journals, AR/AP, expenses, balanced entries, reports, reconciliation, tests |
 | **5** | Automation | Planned | Outbox, Hangfire jobs, notifications, retries, delivery tracking, job admin |
 | **6** | Expansion | Planned | Portal, warranty, multi-branch transfers, mobile, booking, analytics, integrations |
 | **7** | Production Hardening | Planned | Security, backups, observability, performance, integrity audits, operational readiness |
@@ -557,7 +557,7 @@ Introduce a proper **double-entry accounting subsystem** so every material money
 
 ### Current Status
 
-**Planned** (next major phase)
+**Completed**
 
 ### Scope
 
@@ -855,17 +855,17 @@ Create `docs/accounting.md`. Update `database.md`, `api.md`, `modules.md`, `busi
 
 ### Exit Criteria
 
-- [ ] Chart of accounts seeded per org; accounts CRUD/soft deactivate with permissions
-- [ ] Open/closed accounting periods enforced on post
-- [ ] Journal posting engine enforces balance, immutability, source idempotency, traceability
-- [ ] Sale, payment, return, void, purchase receive, supplier payment, and expense mappings post correct journals
-- [ ] AR aging/statements and AP aging/bills/payments work
-- [ ] GL, Trial Balance, P&L, Balance Sheet, Cash Flow available via API (and UI for primary reports)
-- [ ] Reconciliation checks run and surface failures without corrupting data
-- [ ] Opening balance journal supported
-- [ ] Money remains `decimal(18,2)`; no float; no silent mutation of posted entries
-- [ ] Domain + API tests green for posting, idempotency, reversals, isolation
-- [ ] Docs updated including `accounting.md`
+- [x] Chart of accounts seeded per org; accounts CRUD/soft deactivate with permissions
+- [x] Open/closed accounting periods enforced on post
+- [x] Journal posting engine enforces balance, immutability, source idempotency, traceability
+- [x] Sale, payment, return, void, purchase receive, supplier payment, and expense mappings post correct journals
+- [x] AR aging/statements and AP aging/bills/payments work
+- [x] GL, Trial Balance, P&L, Balance Sheet, Cash Flow available via API (and UI for primary reports)
+- [x] Reconciliation checks run and surface failures without corrupting data
+- [x] Opening balance journal supported
+- [x] Money remains `decimal(18,2)`; no float; no silent mutation of posted entries
+- [x] Domain + API tests green for posting, idempotency, reversals, isolation
+- [x] Docs updated including `accounting.md`
 
 ---
 

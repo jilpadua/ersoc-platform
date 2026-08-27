@@ -1,4 +1,5 @@
 using Ersms.Application.Common;
+using Ersms.Domain.Accounting;
 using Ersms.Domain.Sales;
 using Ersms.SharedKernel;
 using Microsoft.EntityFrameworkCore;
@@ -13,11 +14,11 @@ public sealed record DashboardDto(
     int LowStockParts,
     decimal TodaySalesTotal,
     int UnpaidInvoiceCount,
-    IReadOnlyList<TechnicianWorkloadDto> TechnicianWorkload,
-    DashboardUnavailableDto Unavailable);
+    decimal TodayExpenseTotal,
+    decimal CashAndBankBalance,
+    IReadOnlyList<TechnicianWorkloadDto> TechnicianWorkload);
 
 public sealed record TechnicianWorkloadDto(Guid? TechnicianUserId, int OpenRepairs);
-public sealed record DashboardUnavailableDto(string Expenses, string CashBalance);
 
 public interface IDashboardService
 {
@@ -108,6 +109,31 @@ public sealed class DashboardService : IDashboardService
                              && i.Status != InvoiceStatuses.Voided
                              && i.Status != InvoiceStatuses.Paid, ct);
 
+        var todayExpenseTotal = await _db.Expenses.AsNoTracking()
+            .Where(e => e.OrganizationId == orgId
+                        && e.Status == ExpenseStatuses.Posted
+                        && e.ExpenseDate >= todayStart
+                        && e.ExpenseDate < todayEnd)
+            .SumAsync(e => (decimal?)e.Amount, ct) ?? 0m;
+
+        var cashKeys = new[] { MappingKeys.Cash, MappingKeys.Bank, MappingKeys.CardClearing };
+        var cashAccountIds = await _db.AccountingAccountMappings.AsNoTracking()
+            .Where(m => m.OrganizationId == orgId && cashKeys.Contains(m.MappingKey))
+            .Select(m => m.AccountId)
+            .Distinct()
+            .ToListAsync(ct);
+
+        var cashAndBankBalance = 0m;
+        if (cashAccountIds.Count > 0)
+        {
+            var cashLines = await (
+                from l in _db.JournalLines.AsNoTracking()
+                join j in _db.JournalEntries.AsNoTracking() on l.JournalEntryId equals j.Id
+                where j.OrganizationId == orgId && cashAccountIds.Contains(l.AccountId)
+                select new { l.Debit, l.Credit }).ToListAsync(ct);
+            cashAndBankBalance = cashLines.Sum(x => x.Debit - x.Credit);
+        }
+
         return Result<DashboardDto>.Success(new DashboardDto(
             todayRevenue,
             pending,
@@ -116,9 +142,8 @@ public sealed class DashboardService : IDashboardService
             lowStock,
             todaySalesTotal,
             unpaidInvoiceCount,
-            workload,
-            new DashboardUnavailableDto(
-                "Available in Phase 4",
-                "Available in Phase 4")));
+            todayExpenseTotal,
+            cashAndBankBalance,
+            workload));
     }
 }

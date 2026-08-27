@@ -1,4 +1,5 @@
 using Ersms.Application.Common;
+using Ersms.Domain.Accounting;
 using Ersms.Domain.Customers;
 using Ersms.Domain.Devices;
 using Ersms.Domain.Repairs;
@@ -58,6 +59,17 @@ public class ErsmsDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Gu
     public DbSet<Payment> Payments => Set<Payment>();
     public DbSet<SaleReturn> SaleReturns => Set<SaleReturn>();
     public DbSet<SaleReturnLine> SaleReturnLines => Set<SaleReturnLine>();
+    public DbSet<Account> Accounts => Set<Account>();
+    public DbSet<AccountingPeriod> AccountingPeriods => Set<AccountingPeriod>();
+    public DbSet<JournalEntry> JournalEntries => Set<JournalEntry>();
+    public DbSet<JournalLine> JournalLines => Set<JournalLine>();
+    public DbSet<AccountingAccountMapping> AccountingAccountMappings => Set<AccountingAccountMapping>();
+    public DbSet<SupplierBill> SupplierBills => Set<SupplierBill>();
+    public DbSet<SupplierPayment> SupplierPayments => Set<SupplierPayment>();
+    public DbSet<SupplierPaymentAllocation> SupplierPaymentAllocations => Set<SupplierPaymentAllocation>();
+    public DbSet<ExpenseCategory> ExpenseCategories => Set<ExpenseCategory>();
+    public DbSet<Expense> Expenses => Set<Expense>();
+    public DbSet<ExpenseAttachment> ExpenseAttachments => Set<ExpenseAttachment>();
 
     public Task<Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction> BeginTransactionAsync(
         CancellationToken cancellationToken = default)
@@ -352,6 +364,114 @@ public class ErsmsDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Gu
             e.HasKey(x => x.Id);
             e.Property(x => x.Quantity).HasPrecision(18, 2);
             e.HasOne(x => x.SaleReturn).WithMany(x => x.Lines).HasForeignKey(x => x.SaleReturnId);
+        });
+
+        builder.Entity<Account>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.OrganizationId, x.Code }).IsUnique();
+            e.Property(x => x.Code).HasMaxLength(32).IsRequired();
+            e.Property(x => x.Name).HasMaxLength(200).IsRequired();
+            e.Property(x => x.AccountType).HasMaxLength(32).IsRequired();
+            e.Property(x => x.NormalBalance).HasMaxLength(16).IsRequired();
+        });
+
+        builder.Entity<AccountingPeriod>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.OrganizationId, x.StartDate, x.EndDate }).IsUnique();
+            e.Property(x => x.Name).HasMaxLength(64).IsRequired();
+            e.Property(x => x.Status).HasMaxLength(16).IsRequired();
+        });
+
+        builder.Entity<JournalEntry>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.OrganizationId, x.EntryNumber }).IsUnique();
+            e.HasIndex(x => new { x.OrganizationId, x.SourceType, x.SourceId }).IsUnique();
+            e.Property(x => x.EntryNumber).HasMaxLength(32).IsRequired();
+            e.Property(x => x.Status).HasMaxLength(16).IsRequired();
+            e.Property(x => x.SourceType).HasMaxLength(64).IsRequired();
+            e.Property(x => x.Memo).HasMaxLength(500);
+            e.HasOne(x => x.Period).WithMany().HasForeignKey(x => x.PeriodId);
+        });
+
+        builder.Entity<JournalLine>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.AccountId, x.JournalEntryId });
+            e.Property(x => x.Debit).HasPrecision(18, 2);
+            e.Property(x => x.Credit).HasPrecision(18, 2);
+            e.Property(x => x.Description).HasMaxLength(300);
+            e.HasOne(x => x.JournalEntry).WithMany(x => x.Lines).HasForeignKey(x => x.JournalEntryId);
+            e.HasOne(x => x.Account).WithMany().HasForeignKey(x => x.AccountId);
+        });
+
+        builder.Entity<AccountingAccountMapping>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.OrganizationId, x.MappingKey }).IsUnique();
+            e.Property(x => x.MappingKey).HasMaxLength(64).IsRequired();
+            e.HasOne(x => x.Account).WithMany().HasForeignKey(x => x.AccountId);
+        });
+
+        builder.Entity<SupplierBill>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.OrganizationId, x.BillNumber }).IsUnique();
+            e.HasIndex(x => x.SourceReceiveId);
+            e.Property(x => x.BillNumber).HasMaxLength(32).IsRequired();
+            e.Property(x => x.Status).HasMaxLength(16).IsRequired();
+            e.Property(x => x.TotalAmount).HasPrecision(18, 2);
+            e.Property(x => x.AmountPaid).HasPrecision(18, 2);
+            e.Property(x => x.BalanceDue).HasPrecision(18, 2);
+            e.Property(x => x.Notes).HasMaxLength(500);
+        });
+
+        builder.Entity<SupplierPayment>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.OrganizationId, x.IdempotencyKey }).IsUnique();
+            e.Property(x => x.Amount).HasPrecision(18, 2);
+            e.Property(x => x.MethodCode).HasMaxLength(32).IsRequired();
+            e.Property(x => x.IdempotencyKey).HasMaxLength(128).IsRequired();
+            e.Property(x => x.Notes).HasMaxLength(500);
+        });
+
+        builder.Entity<SupplierPaymentAllocation>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Amount).HasPrecision(18, 2);
+            e.HasOne(x => x.SupplierPayment).WithMany(x => x.Allocations).HasForeignKey(x => x.SupplierPaymentId);
+            e.HasOne(x => x.SupplierBill).WithMany().HasForeignKey(x => x.SupplierBillId);
+        });
+
+        builder.Entity<ExpenseCategory>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.OrganizationId, x.Name }).IsUnique();
+            e.Property(x => x.Name).HasMaxLength(120).IsRequired();
+            e.HasOne(x => x.Account).WithMany().HasForeignKey(x => x.AccountId);
+        });
+
+        builder.Entity<Expense>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Amount).HasPrecision(18, 2);
+            e.Property(x => x.Status).HasMaxLength(16).IsRequired();
+            e.Property(x => x.Payee).HasMaxLength(200);
+            e.Property(x => x.MethodCode).HasMaxLength(32);
+            e.Property(x => x.Notes).HasMaxLength(500);
+            e.HasOne(x => x.Category).WithMany().HasForeignKey(x => x.CategoryId);
+        });
+
+        builder.Entity<ExpenseAttachment>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.StorageKey).HasMaxLength(500).IsRequired();
+            e.Property(x => x.FileName).HasMaxLength(260).IsRequired();
+            e.Property(x => x.ContentType).HasMaxLength(128).IsRequired();
+            e.HasOne(x => x.Expense).WithMany(x => x.Attachments).HasForeignKey(x => x.ExpenseId);
         });
 
         builder.Entity<ApplicationUser>(e =>

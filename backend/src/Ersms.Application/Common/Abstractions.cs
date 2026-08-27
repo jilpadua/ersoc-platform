@@ -35,4 +35,13 @@ public static class AuthorizationGuard
             return Result.Failure(ErrorCodes.Forbidden, $"Missing permission: {permission}");
         return Result.Success();
     }
+
+    public static Result RequireAny(ICurrentUser user, params string[] permissions)
+    {
+        if (!user.IsAuthenticated || user.OrganizationId is null)
+            return Result.Failure(ErrorCodes.Unauthorized, "Authentication required.");
+        if (permissions.Any(user.HasPermission))
+            return Result.Success();
+        return Result.Failure(ErrorCodes.Forbidden, "Missing required permission.");
+    }
 }

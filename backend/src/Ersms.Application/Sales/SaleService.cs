@@ -1,4 +1,6 @@
+using Ersms.Application.Accounting;
 using Ersms.Application.Common;
+using Ersms.Domain.Accounting;
 using Ersms.Domain.Inventory;
 using Ersms.Domain.Sales;
 using Ersms.SharedKernel;
@@ -116,13 +118,20 @@ public sealed class SaleService : ISaleService
     private readonly IApplicationDbContext _db;
     private readonly ICurrentUser _user;
     private readonly IAuditService _audit;
+    private readonly IAccountingPostingService _posting;
     private readonly IValidator<CreateSaleRequest> _validator;
 
-    public SaleService(IApplicationDbContext db, ICurrentUser user, IAuditService audit, IValidator<CreateSaleRequest> validator)
+    public SaleService(
+        IApplicationDbContext db,
+        ICurrentUser user,
+        IAuditService audit,
+        IAccountingPostingService posting,
+        IValidator<CreateSaleRequest> validator)
     {
         _db = db;
         _user = user;
         _audit = audit;
+        _posting = posting;
         _validator = validator;
     }
 
@@ -315,6 +324,7 @@ public sealed class SaleService : ISaleService
             };
 
             _db.Sales.Add(sale);
+            Payment? checkoutPayment = null;
 
             if (request.Payment is not null)
             {
@@ -324,7 +334,7 @@ public sealed class SaleService : ISaleService
                     return Result<SaleDetailDto>.Failure(ErrorCodes.Validation, "Payment exceeds balance due.");
                 }
 
-                _db.Payments.Add(new Payment
+                checkoutPayment = new Payment
                 {
                     OrganizationId = orgId,
                     BranchId = branchId.Value,
@@ -336,7 +346,8 @@ public sealed class SaleService : ISaleService
                     ReceivedByUserId = _user.UserId!.Value,
                     IdempotencyKey = request.Payment.IdempotencyKey.Trim(),
                     Status = PaymentStatuses.Succeeded
-                });
+                };
+                _db.Payments.Add(checkoutPayment);
                 sale.AmountPaid = request.Payment.Amount;
                 sale.BalanceDue = Math.Max(0, total - request.Payment.Amount);
                 sale.Invoice.AmountPaid = sale.AmountPaid;
@@ -360,6 +371,20 @@ public sealed class SaleService : ISaleService
                         return Result<SaleDetailDto>.Success(detail);
                 }
                 return Result<SaleDetailDto>.Failure(ErrorCodes.Conflict, "Payment idempotency conflict.");
+            }
+
+            var maps = await AccountingLineBuilders.LoadMapsAsync(_db, orgId, ct);
+            var cogs = Math.Round(lines.Sum(l => l.UnitCost * l.Quantity), 2);
+            var saleLines = AccountingLineBuilders.SaleCompleted(
+                maps, sale.TotalAmount, sale.AmountPaid, checkoutPayment?.MethodCode, cogs);
+            var saleJournal = await _posting.PostAsync(new PostJournalRequest(
+                orgId, sale.BranchId, sale.CompletedAt ?? now,
+                AccountingSourceTypes.SaleCompleted, sale.Id,
+                $"Sale {sale.SaleNumber}", saleLines), ct);
+            if (!saleJournal.IsSuccess)
+            {
+                await tx.RollbackAsync(ct);
+                return Result<SaleDetailDto>.Failure(saleJournal.ErrorCode!, saleJournal.ErrorMessage!);
             }
 
             await tx.CommitAsync(ct);
@@ -443,6 +468,7 @@ public sealed class SaleService : ISaleService
                 IdempotencyKey = key,
                 Status = PaymentStatuses.Succeeded
             });
+            var paymentEntity = _db.Payments.Local.First(p => p.IdempotencyKey == key);
 
             sale.AmountPaid = amountPaid + request.Amount;
             sale.BalanceDue = Math.Max(0, sale.TotalAmount - sale.AmountPaid);
@@ -467,6 +493,18 @@ public sealed class SaleService : ISaleService
                 if (raced is not null && raced.SaleId == id)
                     return Result<SaleDetailDto>.Success((await LoadDetailAsync(id, ct))!);
                 return Result<SaleDetailDto>.Failure(ErrorCodes.Conflict, "Payment idempotency conflict.");
+            }
+
+            var maps = await AccountingLineBuilders.LoadMapsAsync(_db, orgId, ct);
+            var payLines = AccountingLineBuilders.PaymentSucceeded(maps, request.Amount, request.MethodCode);
+            var journal = await _posting.PostAsync(new PostJournalRequest(
+                orgId, sale.BranchId, paymentEntity.PaidAt,
+                AccountingSourceTypes.PaymentSucceeded, paymentEntity.Id,
+                $"Payment on {sale.SaleNumber}", payLines), ct);
+            if (!journal.IsSuccess)
+            {
+                await tx.RollbackAsync(ct);
+                return Result<SaleDetailDto>.Failure(journal.ErrorCode!, journal.ErrorMessage!);
             }
 
             await tx.CommitAsync(ct);
@@ -521,6 +559,7 @@ public sealed class SaleService : ISaleService
         };
 
         decimal refundCalc = 0;
+        decimal cogsAmount = 0;
         foreach (var input in aggregated)
         {
             if (input.Quantity <= 0)
@@ -539,6 +578,7 @@ public sealed class SaleService : ISaleService
                 Quantity = input.Quantity
             });
             refundCalc += Math.Round(line.LineTotal / line.Quantity * input.Quantity, 2);
+            cogsAmount += Math.Round(line.UnitCost * input.Quantity, 2);
 
             _db.StockLedgerEntries.Add(new StockLedgerEntry
             {
@@ -570,9 +610,10 @@ public sealed class SaleService : ISaleService
         sale.TotalAmount = Math.Max(0, sale.TotalAmount - refundCalc);
         sale.Subtotal = Math.Max(0, sale.Subtotal - refundCalc);
 
+        string? refundMethod = null;
         if (refundAmount > 0)
         {
-            var method = request.RefundMethodCode ?? "CASH";
+            refundMethod = request.RefundMethodCode ?? "CASH";
             var key = (request.IdempotencyKey ?? $"refund-{returnDoc.Id}").Trim();
             var existing = await _db.Payments.AsNoTracking()
                 .FirstOrDefaultAsync(p => p.OrganizationId == orgId && p.IdempotencyKey == key, ct);
@@ -589,7 +630,7 @@ public sealed class SaleService : ISaleService
                 BranchId = sale.BranchId,
                 SaleId = sale.Id,
                 Amount = -refundAmount,
-                MethodCode = method,
+                MethodCode = refundMethod,
                 PaidAt = returnNow,
                 CreatedAt = returnNow,
                 ReceivedByUserId = _user.UserId!.Value,
@@ -612,7 +653,32 @@ public sealed class SaleService : ISaleService
             sale.Invoice.UpdatedAt = DateTimeOffset.UtcNow;
         }
 
-        await _db.SaveChangesAsync(ct);
+        await using var tx = await _db.BeginTransactionAsync(ct);
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+
+            var maps = await AccountingLineBuilders.LoadMapsAsync(_db, orgId, ct);
+            var creditToAr = Math.Round(refundCalc - refundAmount, 2);
+            var returnLines = AccountingLineBuilders.SaleReturn(
+                maps, refundCalc, cogsAmount, refundAmount, refundMethod, creditToAr);
+            var journal = await _posting.PostAsync(new PostJournalRequest(
+                orgId, sale.BranchId, returnDoc.CompletedAt,
+                AccountingSourceTypes.SaleReturnCompleted, returnDoc.Id,
+                $"Return {returnDoc.ReturnNumber}", returnLines), ct);
+            if (!journal.IsSuccess)
+            {
+                await tx.RollbackAsync(ct);
+                return Result<SaleDetailDto>.Failure(journal.ErrorCode!, journal.ErrorMessage!);
+            }
+
+            await tx.CommitAsync(ct);
+        }
+        catch
+        {
+            await tx.RollbackAsync(ct);
+            throw;
+        }
 
         await _audit.WriteAsync("return", "Sale", sale.Id.ToString(), null, new { returnDoc.ReturnNumber, returnDoc.RefundAmount }, ct);
         return Result<SaleDetailDto>.Success((await LoadDetailAsync(sale.Id, ct))!);
@@ -665,7 +731,36 @@ public sealed class SaleService : ISaleService
             sale.Invoice.UpdatedAt = sale.VoidedAt;
         }
 
-        await _db.SaveChangesAsync(ct);
+        await using var tx = await _db.BeginTransactionAsync(ct);
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+
+            var original = await _db.JournalEntries.AsNoTracking()
+                .FirstOrDefaultAsync(j =>
+                    j.OrganizationId == orgId
+                    && j.SourceType == AccountingSourceTypes.SaleCompleted
+                    && j.SourceId == sale.Id, ct);
+            if (original is not null)
+            {
+                var reverse = await _posting.ReverseAsync(
+                    original.Id, sale.VoidedAt.Value, AccountingSourceTypes.SaleVoided, sale.Id,
+                    $"Void {sale.SaleNumber}", ct);
+                if (!reverse.IsSuccess)
+                {
+                    await tx.RollbackAsync(ct);
+                    return Result<SaleDetailDto>.Failure(reverse.ErrorCode!, reverse.ErrorMessage!);
+                }
+            }
+
+            await tx.CommitAsync(ct);
+        }
+        catch
+        {
+            await tx.RollbackAsync(ct);
+            throw;
+        }
+
         await _audit.WriteAsync("void", "Sale", sale.Id.ToString(), null, new { sale.Status }, ct);
         return Result<SaleDetailDto>.Success((await LoadDetailAsync(sale.Id, ct))!);
     }

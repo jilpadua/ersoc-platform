@@ -44,4 +44,4 @@ Create/update/status changes write `AuditLogs`. There is no update/delete API fo
 
 ## Dashboard honesty
 
-Repair KPIs, low-stock part count, today’s completed sales total, and unpaid invoice count are real. Expenses and cash balance remain labeled unavailable until Phase 4—never faked.
+Repair KPIs, low-stock part count, today’s completed sales total, unpaid invoice count, posted expenses today, and cash/bank GL balance are real.

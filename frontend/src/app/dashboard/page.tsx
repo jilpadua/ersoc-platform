@@ -12,11 +12,9 @@ type Dashboard = {
   lowStockParts: number;
   todaySalesTotal: number;
   unpaidInvoiceCount: number;
+  todayExpenseTotal: number;
+  cashAndBankBalance: number;
   technicianWorkload: { technicianUserId?: string | null; openRepairs: number }[];
-  unavailable: {
-    expenses: string;
-    cashBalance: string;
-  };
 };
 
 function Metric({
@@ -80,8 +78,16 @@ export default function DashboardPage() {
               value={String(data.unpaidInvoiceCount)}
               hint="Balance due remaining"
             />
-            <Metric label="Expenses" value="—" hint={data.unavailable.expenses} />
-            <Metric label="Cash balance" value="—" hint={data.unavailable.cashBalance} />
+            <Metric
+              label="Expenses"
+              value={`₱${data.todayExpenseTotal.toLocaleString()}`}
+              hint="Posted expenses today"
+            />
+            <Metric
+              label="Cash & bank"
+              value={`₱${data.cashAndBankBalance.toLocaleString()}`}
+              hint="GL cash/bank/card clearing"
+            />
           </div>
           <div className="mt-6 rounded-lg border border-slate-200 bg-white p-4">
             <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">

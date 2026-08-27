@@ -111,6 +111,12 @@ public static class Permissions
     public const string SalesRead = "sales.read";
     public const string SalesWrite = "sales.write";
     public const string SalesRefund = "sales.refund";
+    public const string AccountingRead = "accounting.read";
+    public const string AccountingWrite = "accounting.write";
+    public const string AccountingPost = "accounting.post";
+    public const string AccountingPeriods = "accounting.periods";
+    public const string AccountingApproveExpense = "accounting.approve_expense";
+    public const string AccountingAp = "accounting.ap";
 
     public static IReadOnlyList<string> All { get; } =
     [
@@ -120,7 +126,9 @@ public static class Permissions
         RepairsRead, RepairsWrite, RepairsStatus,
         AuditRead, DashboardRead, SettingsManage, UsersManage,
         InventoryRead, InventoryWrite, PurchasingRead, PurchasingWrite,
-        SalesRead, SalesWrite, SalesRefund
+        SalesRead, SalesWrite, SalesRefund,
+        AccountingRead, AccountingWrite, AccountingPost, AccountingPeriods,
+        AccountingApproveExpense, AccountingAp
     ];
 }
 
