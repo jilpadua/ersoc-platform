@@ -28,6 +28,8 @@ Statuses: `DRAFT` → `ORDERED` → `PARTIALLY_RECEIVED` / `RECEIVED`. Cancel al
 
 Part sales only (no repair checkout in Phase 3). Completing a sale validates stock (re-check inside a DB transaction), writes `Sale`/`SaleLine` (with `UnitCost` snapshotted from `Part.UnitCost`), creates invoice 1:1, deducts inventory, and may accept an initial payment in the same transaction. `TaxTotal` is always `0`. Payment methods are org-seeded (`CASH`, `CARD`, `TRANSFER`). Payments require a unique `(OrganizationId, IdempotencyKey)`. Partial payments allowed; overpay rejected. `AmountPaid` / `BalanceDue` track `Sum(Payments.Amount)` (refunds are negative payment rows).
 
+Business timestamps (UTC): invoice `IssuedAt`, payment `PaidAt`/`CreatedAt`, sale `CompletedAt`/`VoidedAt`, return `CompletedAt`/`RefundedAt`, invoice `DueAt` (nullable), invoice `VoidedAt`. Display uses org `TimeZoneId`. Accounting posting dates use these business stamps—not `CreatedAt` alone (see `accounting.md`).
+
 Returns: quantities cannot exceed sold minus already returned (duplicate lines in one request are aggregated before validation); restock via `SaleReturn` ledger; optional refund payment. **Void only for unpaid completed sales with no returns** (restocks full sold qty). A sale that has returns cannot be voided.
 
 See `docs/accounting.md` for Phase 4 source mapping.

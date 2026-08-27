@@ -28,7 +28,7 @@ On-hand quantity is **ledger-derived** (`SUM(StockLedgerEntries.QuantityDelta)` 
 |--------|------|-------|
 | POST | `/auth/login` | Rate-limited |
 | POST | `/auth/logout` | |
-| GET | `/auth/me` | |
+| GET | `/auth/me` | Includes `timeZoneId` (org IANA timezone) |
 | GET/POST | `/customers` | `includeInactive` on GET |
 | GET/PATCH | `/customers/{id}` | |
 | POST | `/customers/{id}/deactivate` | Soft deactivate |
@@ -79,4 +79,4 @@ On-hand quantity is **ledger-derived** (`SUM(StockLedgerEntries.QuantityDelta)` 
 
 ## Sales (Phase 3)
 
-Creating a sale completes immediately: validates stock (transactional re-check), writes sale lines with `unitCost` snapshot, posts negative `Sale` ledger rows, creates a 1:1 invoice (`TaxTotal = 0`), and optionally records the first payment in the same transaction. Payments require a unique org-scoped idempotency key; replays return the same sale state without double-posting. Void is refused if the sale already has returns.
+Creating a sale completes immediately: validates stock (transactional re-check), writes sale lines with `unitCost` snapshot, posts negative `Sale` ledger rows, creates a 1:1 invoice (`TaxTotal = 0`, `issuedAt`/`createdAt`), and optionally records the first payment in the same transaction. Payments require a unique org-scoped idempotency key; replays return the same sale state without double-posting. Responses expose business stamps (`issuedAt`, `paidAt`, `voidedAt`, `refundedAt`, `dueAt`) plus audit `createdAt`/`updatedAt`. Void is refused if the sale already has returns.

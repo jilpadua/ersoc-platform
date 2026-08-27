@@ -44,3 +44,21 @@ Posting must be **idempotent** on `(OrganizationId, SourceType, SourceId)`.
 
 - Completing a sale re-checks on-hand inside a DB transaction (relational) before posting negative `Sale` ledger rows.
 - Insufficient stock → conflict; sale is not committed.
+
+## Business timestamps and posting dates
+
+All financial timestamps are stored as `DateTimeOffset` (UTC). Display uses `Organization.TimeZoneId` (IANA, default `Asia/Manila`).
+
+| Event | Business timestamp for Phase 4 journal `EntryDate` |
+| ----- | -------------------------------------------------- |
+| Sale completed / invoice issued | `Invoice.IssuedAt` (= `Sale.CompletedAt`) |
+| Payment succeeded | `Payment.PaidAt` |
+| Sale return | `SaleReturn.CompletedAt` |
+| Refund payment | `SaleReturn.RefundedAt` / refund `Payment.PaidAt` |
+| Sale voided | `Sale.VoidedAt` / `Invoice.VoidedAt` |
+| PO receive | `PurchaseReceive.ReceivedAt` |
+| Stock adjustment | `StockLedgerEntry.CreatedAt` (business time of adjustment) |
+
+**Do not** use `CreatedAt` alone as the accounting posting date when a dedicated business stamp exists.
+
+`Invoice.DueAt` is nullable (no payment-terms UI yet). Aging should use `DueAt ?? IssuedAt`.

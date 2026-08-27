@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
+import { useAuth } from "@/components/auth-provider";
 import { api, ApiClientError } from "@/lib/api";
+import { formatOrgDateTime } from "@/lib/datetime";
 import { FormEvent, useEffect, useState } from "react";
 
 type PaymentMethod = { id: string; code: string; name: string };
@@ -19,6 +21,9 @@ type SaleDetail = {
   amountPaid: number;
   balanceDue: number;
   completedAt?: string | null;
+  voidedAt?: string | null;
+  createdAt: string;
+  updatedAt?: string | null;
   notes?: string | null;
   lines: {
     id: string;
@@ -34,12 +39,17 @@ type SaleDetail = {
     amount: number;
     methodCode: string;
     paidAt: string;
+    createdAt: string;
     status: string;
   }[];
   invoice?: {
     id: string;
     invoiceNumber: string;
     status: string;
+    issuedAt: string;
+    dueAt?: string | null;
+    voidedAt?: string | null;
+    createdAt: string;
     balanceDue: number;
   } | null;
   returns: {
@@ -47,6 +57,7 @@ type SaleDetail = {
     returnNumber: string;
     refundAmount: number;
     completedAt: string;
+    refundedAt?: string | null;
     lines: { saleLineId: string; quantity: number }[];
   }[];
 };
@@ -60,6 +71,8 @@ function newIdempotencyKey() {
 
 export default function SaleDetailPage() {
   const params = useParams<{ id: string }>();
+  const { user } = useAuth();
+  const tz = user?.timeZoneId;
   const [sale, setSale] = useState<SaleDetail | null>(null);
   const [methods, setMethods] = useState<PaymentMethod[]>([]);
   const [payAmount, setPayAmount] = useState("");
@@ -177,11 +190,27 @@ export default function SaleDetailPage() {
               <div className="text-xs uppercase text-slate-500">Balance due</div>
               <div className="font-mono">₱{sale.balanceDue.toLocaleString()}</div>
             </div>
+            <div>
+              <div className="text-xs uppercase text-slate-500">Completed</div>
+              <div className="font-mono text-xs">{formatOrgDateTime(sale.completedAt, tz)}</div>
+            </div>
+            {sale.voidedAt && (
+              <div>
+                <div className="text-xs uppercase text-slate-500">Voided</div>
+                <div className="font-mono text-xs">{formatOrgDateTime(sale.voidedAt, tz)}</div>
+              </div>
+            )}
             {sale.invoice && (
               <div className="sm:col-span-2">
                 <div className="text-xs uppercase text-slate-500">Invoice</div>
                 <div>
                   {sale.invoice.invoiceNumber} — {sale.invoice.status}
+                </div>
+                <div className="mt-1 font-mono text-xs text-slate-600">
+                  Issued {formatOrgDateTime(sale.invoice.issuedAt, tz)}
+                  {sale.invoice.voidedAt
+                    ? ` · Voided ${formatOrgDateTime(sale.invoice.voidedAt, tz)}`
+                    : ""}
                 </div>
               </div>
             )}
@@ -217,7 +246,7 @@ export default function SaleDetailPage() {
               {sale.payments.map((p) => (
                 <li key={p.id} className="flex justify-between border-b border-slate-50 py-1">
                   <span>
-                    {p.methodCode} · {p.status}
+                    {p.methodCode} · {p.status} · {formatOrgDateTime(p.paidAt, tz)}
                   </span>
                   <span className="font-mono">₱{p.amount.toLocaleString()}</span>
                 </li>
@@ -308,7 +337,11 @@ export default function SaleDetailPage() {
                 <ul className="mt-4 space-y-1 text-sm text-slate-600">
                   {sale.returns.map((r) => (
                     <li key={r.id}>
-                      {r.returnNumber} — refund ₱{r.refundAmount.toLocaleString()}
+                      {r.returnNumber} — refund ₱{r.refundAmount.toLocaleString()} ·{" "}
+                      {formatOrgDateTime(r.completedAt, tz)}
+                      {r.refundedAt
+                        ? ` · refunded ${formatOrgDateTime(r.refundedAt, tz)}`
+                        : ""}
                     </li>
                   ))}
                 </ul>

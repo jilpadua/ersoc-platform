@@ -35,9 +35,13 @@ Sales: `PaymentMethods`, `Sales`, `SaleLines` (includes `UnitCost` snapshot at s
 
 `Parts.UnitPrice` (sell price); `Parts.UnitCost` / `SaleLines.UnitCost` for COGS prep (see `accounting.md`).
 
+Financial timestamps: `Organizations.TimeZoneId`; `Sales.VoidedAt`; `Invoices.DueAt` / `VoidedAt`; `Payments.CreatedAt`; `SaleReturns.RefundedAt`.
+
 ## Phase 3 hardening migration
 
 `Phase3HardeningAccountingPrep`: adds `SaleLines.UnitCost`, `PurchaseReceives` table.
+
+`FinancialTimestampsAndOrgTimezone`: org timezone + void/due/refund/payment created stamps.
 
 ## Critical constraints
 
